@@ -2,11 +2,34 @@ import jsPDF from "jspdf";
 import type { PaperSection } from "@/hooks/usePapers";
 
 const journalFonts: Record<string, { titleSize: number; bodySize: number; columns: 1 | 2 }> = {
+  // Journals
   ieee: { titleSize: 24, bodySize: 10, columns: 2 },
   springer: { titleSize: 20, bodySize: 11, columns: 1 },
   elsevier: { titleSize: 22, bodySize: 10, columns: 1 },
   acm: { titleSize: 22, bodySize: 9, columns: 2 },
+  wiley: { titleSize: 20, bodySize: 11, columns: 1 },
+  "taylor-francis": { titleSize: 20, bodySize: 11, columns: 1 },
+  sage: { titleSize: 20, bodySize: 11, columns: 1 },
+  mdpi: { titleSize: 18, bodySize: 10, columns: 1 },
+  plos: { titleSize: 20, bodySize: 10, columns: 1 },
+  nature: { titleSize: 22, bodySize: 10, columns: 1 },
+  science: { titleSize: 22, bodySize: 10, columns: 1 },
+  // Conferences
+  "ieee-conf": { titleSize: 24, bodySize: 10, columns: 2 },
+  "acm-conf": { titleSize: 22, bodySize: 9, columns: 2 },
+  neurips: { titleSize: 20, bodySize: 10, columns: 1 },
+  icml: { titleSize: 20, bodySize: 10, columns: 1 },
+  cvpr: { titleSize: 24, bodySize: 10, columns: 2 },
+  aaai: { titleSize: 24, bodySize: 10, columns: 2 },
+  iclr: { titleSize: 20, bodySize: 10, columns: 1 },
+  acl: { titleSize: 22, bodySize: 10, columns: 2 },
+  // Standards
   scopus: { titleSize: 20, bodySize: 11, columns: 1 },
+  "web-of-science": { titleSize: 20, bodySize: 11, columns: 1 },
+  apa7: { titleSize: 20, bodySize: 12, columns: 1 },
+  chicago: { titleSize: 20, bodySize: 12, columns: 1 },
+  mla: { titleSize: 20, bodySize: 12, columns: 1 },
+  harvard: { titleSize: 20, bodySize: 12, columns: 1 },
 };
 
 export function exportToPDF(sections: PaperSection[], journal: string, paperTitle: string) {
@@ -115,7 +138,12 @@ export function exportToLaTeX(sections: PaperSection[], journal: string, paperTi
   const abstract = sections.find((s) => s.id === "abstract")?.content || "";
   const keywords = sections.find((s) => s.id === "keywords")?.content || "";
 
-  const docClass = journal === "ieee" ? "IEEEtran" : "article";
+  const docClassMap: Record<string, string> = {
+    ieee: "IEEEtran", "ieee-conf": "IEEEtran", acm: "acmart", "acm-conf": "acmart",
+    neurips: "article", icml: "article", cvpr: "IEEEtran", aaai: "aaai",
+    iclr: "article", acl: "acl", apa7: "apa7", mla: "article",
+  };
+  const docClass = docClassMap[journal] || "article";
   const contentSections = sections.filter((s) => !["title", "abstract", "keywords"].includes(s.id) && s.content.trim());
 
   let latex = `\\documentclass{${docClass}}
