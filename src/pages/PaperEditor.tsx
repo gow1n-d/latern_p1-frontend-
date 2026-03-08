@@ -591,11 +591,10 @@ export default function PaperEditor() {
 
         {/* Editor / Preview */}
         <div className="flex-1 flex overflow-hidden">
-          {viewMode === "preview" ? (
-            <PaperPreview sections={sections} journal={selectedJournal} />
-          ) : (
-            <div className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto py-10 px-8">
+          {/* Editor pane — shown in edit and split modes */}
+          {(viewMode === "edit" || viewMode === "split") && (
+            <div className={`overflow-y-auto ${viewMode === "split" ? "w-1/2 border-r border-border" : "flex-1"}`}>
+              <div className={`mx-auto py-10 px-8 ${viewMode === "split" ? "max-w-none" : "max-w-3xl"}`}>
                 <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
@@ -620,6 +619,13 @@ export default function PaperEditor() {
                   )}
                 </motion.div>
               </div>
+            </div>
+          )}
+
+          {/* Preview pane — shown in preview and split modes */}
+          {(viewMode === "preview" || viewMode === "split") && (
+            <div className={viewMode === "split" ? "w-1/2 overflow-y-auto" : "flex-1"}>
+              <PaperPreview sections={sections} journal={selectedJournal} />
             </div>
           )}
 
