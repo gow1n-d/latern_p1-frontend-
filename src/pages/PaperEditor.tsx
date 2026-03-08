@@ -827,6 +827,10 @@ export default function PaperEditor() {
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowScholar(true)}>
             <GraduationCap className="h-4 w-4" /> Google Scholar
           </Button>
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-muted-foreground">Theme</span>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
