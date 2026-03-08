@@ -133,6 +133,42 @@ export function exportToText(sections: PaperSection[], paperTitle: string) {
   URL.revokeObjectURL(url);
 }
 
+export function exportToWord(sections: PaperSection[], paperTitle: string) {
+  const title = sections.find((s) => s.id === "title")?.content || "Untitled";
+  const contentSections = sections.filter((s) => s.id !== "title" && s.content.trim());
+
+  const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${title}</title>
+<style>
+  body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; margin: 1in; }
+  h1 { font-size: 18pt; text-align: center; margin-bottom: 6pt; }
+  h2 { font-size: 14pt; font-weight: bold; margin-top: 18pt; margin-bottom: 6pt; }
+  p { text-align: justify; margin-bottom: 6pt; text-indent: 0.5in; }
+  .author { text-align: center; font-size: 12pt; margin-bottom: 12pt; }
+  .no-indent { text-indent: 0; }
+</style></head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <p class="author no-indent">Author(s)</p>
+  <hr/>
+  ${contentSections.map((s) => `<h2>${escapeHtml(s.label.toUpperCase())}</h2>${s.content.split("\n").filter(Boolean).map((p) => `<p>${escapeHtml(p)}</p>`).join("")}`).join("")}
+</body></html>`;
+
+  const blob = new Blob(["\ufeff" + htmlContent], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const filename = (paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
+  a.download = `${filename}.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export function exportToLaTeX(sections: PaperSection[], journal: string, paperTitle: string) {
   const title = sections.find((s) => s.id === "title")?.content || "Untitled";
   const abstract = sections.find((s) => s.id === "abstract")?.content || "";
