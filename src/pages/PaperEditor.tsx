@@ -137,6 +137,21 @@ export default function PaperEditor() {
   const [paperId, setPaperId] = useState<string | null>(isNew ? null : id || null);
   const [wordCount, setWordCount] = useState(0);
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
+  const [isHumanizing, setIsHumanizing] = useState(false);
+
+  // Modal states
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+
+  const [showPlagiarism, setShowPlagiarism] = useState(false);
+  const [plagiarismResult, setPlagiarismResult] = useState<PlagiarismResult | null>(null);
+  const [isCheckingPlagiarism, setIsCheckingPlagiarism] = useState(false);
+
+  const [showScholar, setShowScholar] = useState(false);
+  const [scholarQuery, setScholarQuery] = useState("");
+  const [scholarResults, setScholarResults] = useState<ScholarResult[]>([]);
+  const [isSearchingScholar, setIsSearchingScholar] = useState(false);
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
 
