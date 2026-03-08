@@ -85,6 +85,8 @@ export default function PaperEditor() {
 
   const [selectedJournal, setSelectedJournal] = useState("");
   const [sections, setSections] = useState<PaperSection[]>(DEFAULT_SECTIONS);
+  const [isCompletingAll, setIsCompletingAll] = useState(false);
+  const [completingSection, setCompletingSection] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("title");
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
