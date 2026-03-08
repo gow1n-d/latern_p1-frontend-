@@ -534,18 +534,17 @@ export default function PaperEditor() {
           <div className="flex items-center gap-2">
             {/* View mode toggle */}
             <div className="flex items-center rounded-lg border border-border bg-muted p-0.5">
-              <button
-                onClick={() => setViewMode("edit")}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "edit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Edit3 className="h-3 w-3" /> Edit
-              </button>
-              <button
-                onClick={() => setViewMode("preview")}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "preview" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Eye className="h-3 w-3" /> Paper View
-              </button>
+              {(["edit", "split", "preview"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {mode === "edit" && <><Edit3 className="h-3 w-3" /> Edit</>}
+                  {mode === "split" && <><BookOpen className="h-3 w-3" /> Split</>}
+                  {mode === "preview" && <><Eye className="h-3 w-3" /> Paper View</>}
+                </button>
+              ))}
             </div>
             <div className="h-5 w-px bg-border" />
             {/* Save status */}
