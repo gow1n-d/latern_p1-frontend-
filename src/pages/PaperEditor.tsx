@@ -154,6 +154,7 @@ export default function PaperEditor() {
   const [isSearchingScholar, setIsSearchingScholar] = useState(false);
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
+  const [journalSearch, setJournalSearch] = useState("");
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
