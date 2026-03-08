@@ -159,28 +159,9 @@ function renderTwoColumn(
 ) {
   const gap = 6;
   const colWidth = (pageWidth - margin * 2 - gap) / 2;
-  let col = 0; // 0 = left, 1 = right
-  let y = doc.internal.getCurrentPageInfo().pageNumber === 1 ? getY(doc) : margin;
 
-  function getY(d: jsPDF): number {
-    // We track y externally; use a starting value after the header
-    return margin + 40; // approximate after title/author/hr
-  }
-
-  // Reset y to after title
-  y = margin + 40;
-
-  const addPageTwo = () => { doc.addPage(); y = margin; col = 0; };
-  const checkSpaceTwo = (needed: number) => {
-    if (y + needed > pageHeight - margin) {
-      if (col === 0) { col = 1; y = margin + 40; } // try right column on first page
-      else { addPageTwo(); }
-    }
-  };
-
-  // Flatten all section content into a stream for two columns
-  // Simple approach: render section by section, switching columns when needed
-  let currentY = y;
+  // Start y after title/author/hr area
+  let currentY = margin + 40;
   let currentCol = 0;
   let firstPage = true;
 

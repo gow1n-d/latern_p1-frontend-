@@ -351,7 +351,7 @@ export default function PaperEditor() {
 
   const handleExportWord = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToWord(sections, title);
+    exportToWord(sections, selectedJournal, title);
     setShowExportMenu(false);
     toast.success("Word document exported!");
   };
