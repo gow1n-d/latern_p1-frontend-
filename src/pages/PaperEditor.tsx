@@ -221,19 +221,27 @@ export default function PaperEditor() {
     }
   };
 
-  const handleExport = () => {
-    const text = sections
-      .filter((s) => s.content.trim())
-      .map((s) => `\n${"=".repeat(40)}\n${s.label.toUpperCase()}\n${"=".repeat(40)}\n\n${s.content}`)
-      .join("\n");
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${sections.find((s) => s.id === "title")?.content || "paper"}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Paper exported!");
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExportPDF = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToPDF(sections, selectedJournal, title);
+    setShowExportMenu(false);
+    toast.success("PDF exported!");
+  };
+
+  const handleExportLaTeX = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToLaTeX(sections, selectedJournal, title);
+    setShowExportMenu(false);
+    toast.success("LaTeX exported!");
+  };
+
+  const handleExportText = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToText(sections, title);
+    setShowExportMenu(false);
+    toast.success("Text exported!");
   };
 
   const copySection = () => {
