@@ -1,3 +1,4 @@
+import { useRef, useEffect, useState } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
 
 type FormatConfig = {
@@ -47,8 +48,15 @@ const DEFAULT_CONFIG: FormatConfig = {
 
 const NON_BODY = ["title", "keywords", "references", "works-cited", "bibliography", "reference-list", "ccs-concepts", "highlights"];
 
+// US Letter page height in px at ~96dpi scaled for preview (11in * 96dpi ≈ 1056px)
+// We use a content height accounting for top/bottom padding (48px each)
+const PAGE_CONTENT_HEIGHT = 960; // 1056 - 96 padding
+
 export default function PaperPreview({ sections, journal }: { sections: PaperSection[]; journal: string }) {
   const config = FORMAT_CONFIGS[journal] || DEFAULT_CONFIG;
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [pageCount, setPageCount] = useState(1);
+
   const titleSection = sections.find((s) => s.id === "title");
   const abstractSection = sections.find((s) => s.id === "abstract");
   const keywordsSection = sections.find((s) => s.id === "keywords");
@@ -57,6 +65,14 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
   const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.id !== "abstract" && s.content.trim());
 
   let sectionCounter = 0;
+
+  // Calculate page count after render
+  useEffect(() => {
+    if (contentRef.current) {
+      const totalHeight = contentRef.current.scrollHeight;
+      setPageCount(Math.max(1, Math.ceil(totalHeight / PAGE_CONTENT_HEIGHT)));
+    }
+  }, [sections, journal]);
 
   const renderHeading = (label: string) => {
     sectionCounter++;
@@ -77,101 +93,137 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
 
   return (
     <div className="flex-1 overflow-y-auto bg-muted/40 py-8 px-4">
-      {/* Paper page */}
-      <div className={`mx-auto ${config.pageWidth} bg-white text-black shadow-xl ${config.fontFamily}`}
-        style={{ padding: "48px 52px", minHeight: "1100px" }}>
-
-        {/* Header / Title */}
-        <div className="text-center mb-4">
-          <h1 className={`${config.titleSize} font-bold ${config.lineHeight} mb-2`}>
-            {titleSection?.content || "Untitled Paper"}
-          </h1>
-          <p className="text-[10.5px] text-gray-600 mb-1">Author Name<sup>1</sup></p>
-          <p className="text-[8.5px] text-gray-500 italic">
-            <sup>1</sup>Department, University, City, Country
-          </p>
-        </div>
-
-        <hr className="border-gray-300 mb-3" />
-
-        {/* Abstract — always full-width even on two-column */}
-        {abstractSection?.content && (
-          <div className="mb-3">
-            <p className="font-bold text-[10px] tracking-wide uppercase mb-0.5">Abstract</p>
-            <p className={`${config.bodySize} ${config.lineHeight} text-justify ${config.abstract === "italic" ? "italic" : ""}`}>
-              {abstractSection.content}
-            </p>
-          </div>
-        )}
-
-        {/* Keywords / Index Terms */}
-        {keywordsSection?.content && (
-          <div className="mb-3">
-            <p className="text-[9.5px]">
-              <span className="font-bold italic">{journal.startsWith("ieee") ? "Index Terms" : "Keywords"}: </span>
-              <span className="italic">{keywordsSection.content}</span>
-            </p>
-          </div>
-        )}
-
-        {/* Highlights (Elsevier) */}
-        {highlightsSection?.content && (
-          <div className="mb-3 border border-gray-200 p-3 bg-gray-50 rounded">
-            <p className="font-bold text-[10px] mb-1">Highlights</p>
-            {highlightsSection.content.split("\n").filter(Boolean).map((h, i) => (
-              <p key={i} className="text-[9.5px] leading-[1.3]">• {h.replace(/^[•\-]\s*/, "")}</p>
-            ))}
-          </div>
-        )}
-
-        {/* CCS Concepts (ACM) */}
-        {ccsSection?.content && (
-          <div className="mb-3">
-            <p className="font-bold text-[10px] mb-0.5">CCS Concepts</p>
-            <p className="text-[9.5px] italic">{ccsSection.content}</p>
-          </div>
-        )}
-
-        <hr className="border-gray-200 mb-2" />
-
-        {/* Body — two-column or single-column */}
-        {config.columns === 2 ? (
-          <div className="columns-2 gap-5" style={{ columnRule: "0.5px solid #e5e7eb" }}>
-            {bodySections.map((s) => (
-              <div key={s.id} className="break-inside-avoid mb-2">
-                {renderHeading(s.label)}
-                {renderParagraphs(s.content)}
+      <div className={`mx-auto ${config.pageWidth} ${config.fontFamily} relative`}>
+        {/* Continuous content rendered inside paged container */}
+        <div className="relative">
+          {/* Page backgrounds + borders + page numbers */}
+          {Array.from({ length: pageCount }).map((_, i) => (
+            <div key={`page-${i}`}>
+              {/* The page "sheet" */}
+              <div
+                className="bg-white shadow-xl relative"
+                style={{
+                  height: `${PAGE_CONTENT_HEIGHT + 96}px`, // content + padding
+                  marginBottom: i < pageCount - 1 ? 0 : undefined,
+                }}
+              >
+                {/* Page number */}
+                <div className="absolute bottom-3 left-0 right-0 text-center">
+                  <span className="text-[8px] text-gray-400">{i + 1}</span>
+                </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div>
-            {bodySections.map((s) => (
-              <div key={s.id} className="mb-2">
-                {renderHeading(s.label)}
-                {renderParagraphs(s.content)}
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* References */}
-        {(() => {
-          const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
-          if (!refSection?.content.trim()) return null;
-          return (
-            <div className="mt-4">
-              <h3 className="font-bold text-[11px] tracking-wide uppercase mb-1">{refSection.label}</h3>
-              {refSection.content.split("\n").filter(Boolean).map((r, i) => (
-                <p key={i} className="text-[8.5px] leading-[1.3] mb-0.5 pl-3 -indent-3">[{i + 1}] {r.replace(/^\[\d+\]\s*/, "")}</p>
-              ))}
+              {/* Page break indicator between pages */}
+              {i < pageCount - 1 && (
+                <div className="relative flex items-center justify-center py-2 my-0">
+                  <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed border-accent/40" />
+                  <span className="relative bg-muted/40 px-3 py-0.5 rounded-full text-[10px] font-medium text-muted-foreground border border-border">
+                    Page {i + 1} → {i + 2}
+                  </span>
+                </div>
+              )}
             </div>
-          );
-        })()}
+          ))}
 
-        {/* Footer */}
-        <div className="mt-8 pt-2 border-t border-gray-200 text-center">
-          <p className="text-[7px] text-gray-400">Generated by PaperForge</p>
+          {/* Content overlay — flows naturally over page backgrounds */}
+          <div
+            ref={contentRef}
+            className="absolute top-0 left-0 right-0 text-black"
+            style={{ padding: "48px 52px" }}
+          >
+            {/* Header / Title */}
+            <div className="text-center mb-4">
+              <h1 className={`${config.titleSize} font-bold ${config.lineHeight} mb-2`}>
+                {titleSection?.content || "Untitled Paper"}
+              </h1>
+              <p className="text-[10.5px] text-gray-600 mb-1">Author Name<sup>1</sup></p>
+              <p className="text-[8.5px] text-gray-500 italic">
+                <sup>1</sup>Department, University, City, Country
+              </p>
+            </div>
+
+            <hr className="border-gray-300 mb-3" />
+
+            {/* Abstract */}
+            {abstractSection?.content && (
+              <div className="mb-3">
+                <p className="font-bold text-[10px] tracking-wide uppercase mb-0.5">Abstract</p>
+                <p className={`${config.bodySize} ${config.lineHeight} text-justify ${config.abstract === "italic" ? "italic" : ""}`}>
+                  {abstractSection.content}
+                </p>
+              </div>
+            )}
+
+            {/* Keywords */}
+            {keywordsSection?.content && (
+              <div className="mb-3">
+                <p className="text-[9.5px]">
+                  <span className="font-bold italic">{journal.startsWith("ieee") ? "Index Terms" : "Keywords"}: </span>
+                  <span className="italic">{keywordsSection.content}</span>
+                </p>
+              </div>
+            )}
+
+            {/* Highlights (Elsevier) */}
+            {highlightsSection?.content && (
+              <div className="mb-3 border border-gray-200 p-3 bg-gray-50 rounded">
+                <p className="font-bold text-[10px] mb-1">Highlights</p>
+                {highlightsSection.content.split("\n").filter(Boolean).map((h, i) => (
+                  <p key={i} className="text-[9.5px] leading-[1.3]">• {h.replace(/^[•\-]\s*/, "")}</p>
+                ))}
+              </div>
+            )}
+
+            {/* CCS Concepts (ACM) */}
+            {ccsSection?.content && (
+              <div className="mb-3">
+                <p className="font-bold text-[10px] mb-0.5">CCS Concepts</p>
+                <p className="text-[9.5px] italic">{ccsSection.content}</p>
+              </div>
+            )}
+
+            <hr className="border-gray-200 mb-2" />
+
+            {/* Body */}
+            {config.columns === 2 ? (
+              <div className="columns-2 gap-5" style={{ columnRule: "0.5px solid #e5e7eb" }}>
+                {bodySections.map((s) => (
+                  <div key={s.id} className="break-inside-avoid mb-2">
+                    {renderHeading(s.label)}
+                    {renderParagraphs(s.content)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div>
+                {bodySections.map((s) => (
+                  <div key={s.id} className="mb-2">
+                    {renderHeading(s.label)}
+                    {renderParagraphs(s.content)}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* References */}
+            {(() => {
+              const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
+              if (!refSection?.content.trim()) return null;
+              return (
+                <div className="mt-4">
+                  <h3 className="font-bold text-[11px] tracking-wide uppercase mb-1">{refSection.label}</h3>
+                  {refSection.content.split("\n").filter(Boolean).map((r, i) => (
+                    <p key={i} className="text-[8.5px] leading-[1.3] mb-0.5 pl-3 -indent-3">[{i + 1}] {r.replace(/^\[\d+\]\s*/, "")}</p>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div className="mt-8 pt-2 border-t border-gray-200 text-center">
+              <p className="text-[7px] text-gray-400">Generated by PaperForge</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
