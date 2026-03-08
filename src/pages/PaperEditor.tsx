@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist } from "@/lib/ai";
+import { exportToPDF, exportToText, exportToLaTeX } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection } from "@/hooks/usePapers";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -220,19 +221,27 @@ export default function PaperEditor() {
     }
   };
 
-  const handleExport = () => {
-    const text = sections
-      .filter((s) => s.content.trim())
-      .map((s) => `\n${"=".repeat(40)}\n${s.label.toUpperCase()}\n${"=".repeat(40)}\n\n${s.content}`)
-      .join("\n");
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${sections.find((s) => s.id === "title")?.content || "paper"}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Paper exported!");
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExportPDF = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToPDF(sections, selectedJournal, title);
+    setShowExportMenu(false);
+    toast.success("PDF exported!");
+  };
+
+  const handleExportLaTeX = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToLaTeX(sections, selectedJournal, title);
+    setShowExportMenu(false);
+    toast.success("LaTeX exported!");
+  };
+
+  const handleExportText = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToText(sections, title);
+    setShowExportMenu(false);
+    toast.success("Text exported!");
   };
 
   const copySection = () => {
@@ -419,9 +428,18 @@ export default function PaperEditor() {
             <Button variant="outline" size="sm" className="gap-2" onClick={handleManualSave} disabled={isSaving || !paperId}>
               <Save className="h-4 w-4" /> Save
             </Button>
-            <Button variant="hero" size="sm" className="gap-2" onClick={handleExport}>
-              <Download className="h-4 w-4" /> Export
-            </Button>
+            <div className="relative">
+              <Button variant="hero" size="sm" className="gap-2" onClick={() => setShowExportMenu(!showExportMenu)}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
+                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
+                  <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
+                  <button onClick={handleExportText} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
