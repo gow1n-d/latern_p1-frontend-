@@ -252,13 +252,16 @@ function renderSingleColumn(
 ) {
   const lh = lineH(config.bodySize, config.lineSpacing);
   const headLhVal = lineH(config.headingSize, 1.2);
+  const bottomLimit = ph - margin;
   const addPage = () => { doc.addPage(); y = margin; };
-  const checkSpace = (needed: number) => { if (y + needed > ph - margin) addPage(); };
+  const checkSpace = (needed: number) => { if (y + needed > bottomLimit) addPage(); };
 
   let sectionNum = 0;
   for (const section of bodySections) {
     sectionNum++;
-    checkSpace(headLhVal + lh * 2);
+    // Ensure heading + at least 2 lines of body stay together (no orphan headings)
+    const minKeepTogether = headLhVal + 1 + lh * 2;
+    checkSpace(minKeepTogether);
 
     // Heading
     doc.setFontSize(config.headingSize);
@@ -281,6 +284,7 @@ function renderSingleColumn(
         doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
         y += lh;
       }
+      // Keep at least 2 lines of a paragraph together (avoid widows)
       y += 1;
     }
     y += 2;
@@ -288,7 +292,8 @@ function renderSingleColumn(
 
   // References
   if (refSection?.content.trim()) {
-    checkSpace(headLhVal + lh * 2);
+    const refHeadKeep = headLhVal + 1 + lineH(config.bodySize - 1, 1.25) * 2;
+    checkSpace(refHeadKeep);
     doc.setFontSize(config.headingSize);
     doc.setFont("times", "bold");
     doc.text(config.headingStyle === "roman" ? "REFERENCES" : "References", margin, y);
@@ -302,6 +307,9 @@ function renderSingleColumn(
       const cleaned = r.replace(/^\[\d+\]\s*/, "");
       const refText = `[${i + 1}] ${cleaned}`;
       const wrapped = doc.splitTextToSize(refText, contentW - 5);
+      // Keep entire reference entry together
+      const refEntryH = wrapped.length * refLh + 0.5;
+      checkSpace(Math.min(refEntryH, lh * 3)); // at least keep first 3 lines together
       for (let li = 0; li < wrapped.length; li++) {
         checkSpace(refLh);
         doc.text(wrapped[li], margin + (li === 0 ? 0 : 5), y);
