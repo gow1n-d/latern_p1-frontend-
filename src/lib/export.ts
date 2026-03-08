@@ -1,7 +1,13 @@
 import jsPDF from "jspdf";
 import type { PaperSection } from "@/hooks/usePapers";
 
-const journalFonts: Record<string, { titleSize: number; bodySize: number; columns: 1 | 2 }> = {
+type JournalConfig = {
+  titleSize: number;
+  bodySize: number;
+  columns: 1 | 2;
+};
+
+const journalFonts: Record<string, JournalConfig> = {
   // Journals
   ieee: { titleSize: 24, bodySize: 10, columns: 2 },
   springer: { titleSize: 20, bodySize: 11, columns: 1 },
@@ -14,6 +20,25 @@ const journalFonts: Record<string, { titleSize: number; bodySize: number; column
   plos: { titleSize: 20, bodySize: 10, columns: 1 },
   nature: { titleSize: 22, bodySize: 10, columns: 1 },
   science: { titleSize: 22, bodySize: 10, columns: 1 },
+  frontiers: { titleSize: 20, bodySize: 11, columns: 1 },
+  "royal-society": { titleSize: 20, bodySize: 10, columns: 1 },
+  "oxford-academic": { titleSize: 20, bodySize: 11, columns: 1 },
+  "cambridge-up": { titleSize: 20, bodySize: 11, columns: 1 },
+  "de-gruyter": { titleSize: 20, bodySize: 11, columns: 1 },
+  bmc: { titleSize: 20, bodySize: 11, columns: 1 },
+  hindawi: { titleSize: 20, bodySize: 10, columns: 1 },
+  "ios-press": { titleSize: 20, bodySize: 11, columns: 1 },
+  karger: { titleSize: 20, bodySize: 10, columns: 1 },
+  "world-scientific": { titleSize: 20, bodySize: 10, columns: 2 },
+  "emerald-insight": { titleSize: 20, bodySize: 11, columns: 1 },
+  lippincott: { titleSize: 20, bodySize: 10, columns: 1 },
+  "thieme-medical": { titleSize: 20, bodySize: 10, columns: 1 },
+  lancet: { titleSize: 22, bodySize: 10, columns: 1 },
+  bmj: { titleSize: 20, bodySize: 10, columns: 1 },
+  jama: { titleSize: 22, bodySize: 10, columns: 2 },
+  nejm: { titleSize: 22, bodySize: 10, columns: 1 },
+  cell: { titleSize: 22, bodySize: 10, columns: 1 },
+  pnas: { titleSize: 22, bodySize: 9, columns: 2 },
   // Conferences
   "ieee-conf": { titleSize: 24, bodySize: 10, columns: 2 },
   "acm-conf": { titleSize: 22, bodySize: 9, columns: 2 },
@@ -23,6 +48,17 @@ const journalFonts: Record<string, { titleSize: number; bodySize: number; column
   aaai: { titleSize: 24, bodySize: 10, columns: 2 },
   iclr: { titleSize: 20, bodySize: 10, columns: 1 },
   acl: { titleSize: 22, bodySize: 10, columns: 2 },
+  interspeech: { titleSize: 22, bodySize: 10, columns: 2 },
+  icassp: { titleSize: 24, bodySize: 10, columns: 2 },
+  miccai: { titleSize: 20, bodySize: 10, columns: 1 },
+  eccv: { titleSize: 24, bodySize: 10, columns: 2 },
+  sigmod: { titleSize: 22, bodySize: 9, columns: 2 },
+  vldb: { titleSize: 22, bodySize: 9, columns: 2 },
+  www: { titleSize: 22, bodySize: 9, columns: 2 },
+  kdd: { titleSize: 22, bodySize: 9, columns: 2 },
+  ijcai: { titleSize: 22, bodySize: 10, columns: 2 },
+  coling: { titleSize: 22, bodySize: 10, columns: 2 },
+  naacl: { titleSize: 22, bodySize: 10, columns: 2 },
   // Standards
   scopus: { titleSize: 20, bodySize: 11, columns: 1 },
   "web-of-science": { titleSize: 20, bodySize: 11, columns: 1 },
@@ -30,10 +66,16 @@ const journalFonts: Record<string, { titleSize: number; bodySize: number; column
   chicago: { titleSize: 20, bodySize: 12, columns: 1 },
   mla: { titleSize: 20, bodySize: 12, columns: 1 },
   harvard: { titleSize: 20, bodySize: 12, columns: 1 },
+  vancouver: { titleSize: 20, bodySize: 12, columns: 1 },
+  turabian: { titleSize: 20, bodySize: 12, columns: 1 },
 };
 
+function getConfig(journal: string): JournalConfig {
+  return journalFonts[journal] || journalFonts.ieee;
+}
+
 export function exportToPDF(sections: PaperSection[], journal: string, paperTitle: string) {
-  const config = journalFonts[journal] || journalFonts.ieee;
+  const config = getConfig(journal);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -41,16 +83,8 @@ export function exportToPDF(sections: PaperSection[], journal: string, paperTitl
   const contentWidth = pageWidth - margin * 2;
   let y = margin;
 
-  const addPage = () => {
-    doc.addPage();
-    y = margin;
-  };
-
-  const checkSpace = (needed: number) => {
-    if (y + needed > pageHeight - margin) {
-      addPage();
-    }
-  };
+  const addPage = () => { doc.addPage(); y = margin; };
+  const checkSpace = (needed: number) => { if (y + needed > pageHeight - margin) addPage(); };
 
   // Title
   const titleSection = sections.find((s) => s.id === "title");
@@ -63,45 +97,43 @@ export function exportToPDF(sections: PaperSection[], journal: string, paperTitl
     y += titleLines.length * config.titleSize * 0.45 + 8;
   }
 
-  // Authors placeholder
+  // Authors
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
   doc.text("Author(s)", pageWidth / 2, y, { align: "center" });
   y += 8;
 
-  // Horizontal rule
   doc.setDrawColor(200);
   doc.line(margin, y, pageWidth - margin, y);
   y += 8;
 
   // Content sections
-  const contentSections = sections.filter(
-    (s) => s.id !== "title" && s.content.trim()
-  );
+  const contentSections = sections.filter((s) => s.id !== "title" && s.content.trim());
 
-  for (const section of contentSections) {
-    // Section heading
-    checkSpace(15);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    const heading = section.id === "references" ? "REFERENCES" : section.label.toUpperCase();
-    doc.text(heading, margin, y);
-    y += 6;
+  if (config.columns === 2) {
+    renderTwoColumn(doc, contentSections, config, margin, pageWidth, pageHeight);
+  } else {
+    for (const section of contentSections) {
+      checkSpace(15);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      const heading = section.id === "references" ? "REFERENCES" : section.label.toUpperCase();
+      doc.text(heading, margin, y);
+      y += 6;
 
-    // Section body
-    doc.setFontSize(config.bodySize);
-    doc.setFont("times", "normal");
-    const lines = doc.splitTextToSize(section.content, contentWidth);
-
-    for (const line of lines) {
-      checkSpace(5);
-      doc.text(line, margin, y);
-      y += config.bodySize * 0.42;
+      doc.setFontSize(config.bodySize);
+      doc.setFont("times", "normal");
+      const lines = doc.splitTextToSize(section.content, contentWidth);
+      for (const line of lines) {
+        checkSpace(5);
+        doc.text(line, margin, y);
+        y += config.bodySize * 0.42;
+      }
+      y += 6;
     }
-    y += 6;
   }
 
-  // Footer on each page
+  // Footer
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -117,52 +149,134 @@ export function exportToPDF(sections: PaperSection[], journal: string, paperTitl
   doc.save(`${filename}.pdf`);
 }
 
+function renderTwoColumn(
+  doc: jsPDF,
+  sections: PaperSection[],
+  config: JournalConfig,
+  margin: number,
+  pageWidth: number,
+  pageHeight: number
+) {
+  const gap = 6;
+  const colWidth = (pageWidth - margin * 2 - gap) / 2;
+  let col = 0; // 0 = left, 1 = right
+  let y = doc.internal.getCurrentPageInfo().pageNumber === 1 ? getY(doc) : margin;
+
+  function getY(d: jsPDF): number {
+    // We track y externally; use a starting value after the header
+    return margin + 40; // approximate after title/author/hr
+  }
+
+  // Reset y to after title
+  y = margin + 40;
+
+  const addPageTwo = () => { doc.addPage(); y = margin; col = 0; };
+  const checkSpaceTwo = (needed: number) => {
+    if (y + needed > pageHeight - margin) {
+      if (col === 0) { col = 1; y = margin + 40; } // try right column on first page
+      else { addPageTwo(); }
+    }
+  };
+
+  // Flatten all section content into a stream for two columns
+  // Simple approach: render section by section, switching columns when needed
+  let currentY = y;
+  let currentCol = 0;
+  let firstPage = true;
+
+  const getX = () => margin + currentCol * (colWidth + gap);
+
+  for (const section of sections) {
+    // Section heading
+    const spaceForHeading = 10;
+    if (currentY + spaceForHeading > pageHeight - margin) {
+      if (currentCol === 0 && firstPage) {
+        currentCol = 1;
+        currentY = y;
+      } else if (currentCol === 0) {
+        currentCol = 1;
+        currentY = margin;
+      } else {
+        doc.addPage();
+        currentCol = 0;
+        currentY = margin;
+        firstPage = false;
+      }
+    }
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    const heading = section.id === "references" ? "REFERENCES" : section.label.toUpperCase();
+    doc.text(heading, getX(), currentY);
+    currentY += 5;
+
+    // Section body
+    doc.setFontSize(config.bodySize);
+    doc.setFont("times", "normal");
+    const lines = doc.splitTextToSize(section.content, colWidth);
+
+    for (const line of lines) {
+      if (currentY + 4 > pageHeight - margin) {
+        if (currentCol === 0 && firstPage) {
+          currentCol = 1;
+          currentY = y;
+        } else if (currentCol === 0) {
+          currentCol = 1;
+          currentY = margin;
+        } else {
+          doc.addPage();
+          currentCol = 0;
+          currentY = margin;
+          firstPage = false;
+        }
+      }
+      doc.text(line, getX(), currentY);
+      currentY += config.bodySize * 0.42;
+    }
+    currentY += 4;
+  }
+}
+
 export function exportToText(sections: PaperSection[], paperTitle: string) {
   const text = sections
     .filter((s) => s.content.trim())
     .map((s) => `\n${"=".repeat(60)}\n${s.label.toUpperCase()}\n${"=".repeat(60)}\n\n${s.content}`)
     .join("\n\n");
 
-  const blob = new Blob([text], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  const filename = (paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
-  a.download = `${filename}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([text], { type: "text/plain" }), paperTitle, "txt");
 }
 
-export function exportToWord(sections: PaperSection[], paperTitle: string) {
+export function exportToWord(sections: PaperSection[], journal: string, paperTitle: string) {
+  const config = getConfig(journal);
   const title = sections.find((s) => s.id === "title")?.content || "Untitled";
   const contentSections = sections.filter((s) => s.id !== "title" && s.content.trim());
+
+  const columnStyle = config.columns === 2
+    ? `mso-columns: 2; column-count: 2; column-gap: 0.3in;`
+    : "";
 
   const htmlContent = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><title>${title}</title>
 <style>
-  body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; margin: 1in; }
-  h1 { font-size: 18pt; text-align: center; margin-bottom: 6pt; }
+  body { font-family: 'Times New Roman', Times, serif; font-size: ${config.bodySize}pt; line-height: 1.5; margin: 1in; }
+  h1 { font-size: ${config.titleSize * 0.75}pt; text-align: center; margin-bottom: 6pt; }
   h2 { font-size: 14pt; font-weight: bold; margin-top: 18pt; margin-bottom: 6pt; }
   p { text-align: justify; margin-bottom: 6pt; text-indent: 0.5in; }
   .author { text-align: center; font-size: 12pt; margin-bottom: 12pt; }
   .no-indent { text-indent: 0; }
+  .content-body { ${columnStyle} }
 </style></head>
 <body>
   <h1>${escapeHtml(title)}</h1>
   <p class="author no-indent">Author(s)</p>
   <hr/>
+  <div class="content-body">
   ${contentSections.map((s) => `<h2>${escapeHtml(s.label.toUpperCase())}</h2>${s.content.split("\n").filter(Boolean).map((p) => `<p>${escapeHtml(p)}</p>`).join("")}`).join("")}
+  </div>
 </body></html>`;
 
-  const blob = new Blob(["\ufeff" + htmlContent], { type: "application/msword" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  const filename = (paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
-  a.download = `${filename}.doc`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob(["\ufeff" + htmlContent], { type: "application/msword" }), paperTitle, "doc");
 }
 
 function escapeHtml(text: string): string {
@@ -204,20 +318,12 @@ ${escapeLatex(abstract)}
 `;
 
   for (const section of contentSections) {
-    const sectionName = section.label;
-    latex += `\\section{${escapeLatex(sectionName)}}\n${escapeLatex(section.content)}\n\n`;
+    latex += `\\section{${escapeLatex(section.label)}}\n${escapeLatex(section.content)}\n\n`;
   }
 
   latex += `\\end{document}\n`;
 
-  const blob = new Blob([latex], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  const filename = (paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
-  a.download = `${filename}.tex`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([latex], { type: "text/plain" }), paperTitle, "tex");
 }
 
 function escapeLatex(text: string): string {
@@ -226,4 +332,14 @@ function escapeLatex(text: string): string {
     .replace(/[&%$#_{}]/g, (m) => `\\${m}`)
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}");
+}
+
+function downloadBlob(blob: Blob, title: string, ext: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const filename = (title || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
+  a.download = `${filename}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
