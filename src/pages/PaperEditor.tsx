@@ -1,13 +1,16 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, ChevronLeft, Save, Download, Sparkles, Check,
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
-  Underline, AlignLeft, List, Quote, Type, Loader2
+  Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
+  Copy, RotateCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist } from "@/lib/ai";
+import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection } from "@/hooks/usePapers";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 const journalOptions = [
@@ -18,26 +21,6 @@ const journalOptions = [
   { id: "scopus", name: "Scopus", color: "bg-rose-500/10 text-rose-700 border-rose-200" },
 ];
 
-const defaultSections = [
-  { id: "title", label: "Title", content: "" },
-  { id: "abstract", label: "Abstract", content: "" },
-  { id: "keywords", label: "Keywords", content: "" },
-  { id: "introduction", label: "Introduction", content: "" },
-  { id: "literature", label: "Literature Review", content: "" },
-  { id: "methodology", label: "Methodology", content: "" },
-  { id: "results", label: "Results", content: "" },
-  { id: "discussion", label: "Discussion", content: "" },
-  { id: "conclusion", label: "Conclusion", content: "" },
-  { id: "references", label: "References", content: "" },
-];
-
-const sampleContent: Record<string, string> = {
-  title: "Deep Learning Approaches for Medical Image Segmentation: A Comprehensive Survey",
-  abstract: "This paper presents a comprehensive survey of deep learning methods applied to medical image segmentation.",
-  keywords: "Deep Learning, Medical Image Segmentation, U-Net, Transformer, Transfer Learning",
-  introduction: "Medical image segmentation is a fundamental task in computer-aided diagnosis and treatment planning.",
-};
-
 const AI_GENERATABLE = ["abstract", "keywords", "introduction", "literature", "methodology", "results", "discussion", "conclusion"];
 
 const quickActions = [
@@ -45,59 +28,120 @@ const quickActions = [
   "Make more concise",
   "Expand with details",
   "Add academic tone",
-  "Fix grammar",
+  "Fix grammar & punctuation",
+  "Add transition sentences",
+  "Strengthen argumentation",
 ];
 
 export default function PaperEditor() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isNew = id === "new";
+  const { user } = useAuth();
 
-  const [selectedJournal, setSelectedJournal] = useState(isNew ? "" : "ieee");
-  const [sections, setSections] = useState(
-    defaultSections.map((s) => ({
-      ...s,
-      content: isNew ? "" : (sampleContent[s.id] || ""),
-    }))
-  );
+  const { data: existingPaper, isLoading: loadingPaper } = usePaper(id);
+  const createPaper = useCreatePaper();
+  const updatePaper = useUpdatePaper();
+
+  const [selectedJournal, setSelectedJournal] = useState("");
+  const [sections, setSections] = useState<PaperSection[]>(DEFAULT_SECTIONS);
   const [activeSection, setActiveSection] = useState("title");
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
   const [showJournalPicker, setShowJournalPicker] = useState(isNew);
+  const [showMetaForm, setShowMetaForm] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAssisting, setIsAssisting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [paperId, setPaperId] = useState<string | null>(isNew ? null : id || null);
+  const [wordCount, setWordCount] = useState(0);
 
-  // Paper metadata for AI context
-  const [paperMeta, setPaperMeta] = useState({
-    domain: "",
-    methodology: "",
-    results_summary: "",
-  });
-  const [showMetaForm, setShowMetaForm] = useState(false);
+  const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Load existing paper
+  useEffect(() => {
+    if (existingPaper) {
+      setSections(existingPaper.sections);
+      setSelectedJournal(existingPaper.journal);
+      setPaperMeta({
+        domain: existingPaper.domain || "",
+        methodology: existingPaper.methodology_summary || "",
+        results_summary: existingPaper.results_summary || "",
+      });
+      setShowJournalPicker(false);
+      setPaperId(existingPaper.id);
+    }
+  }, [existingPaper]);
+
+  // Word count
+  useEffect(() => {
+    const total = sections.reduce((acc, s) => acc + (s.content.trim() ? s.content.trim().split(/\s+/).length : 0), 0);
+    setWordCount(total);
+  }, [sections]);
+
+  // Auto-save
+  const autoSave = useCallback((updatedSections: PaperSection[]) => {
+    if (!paperId) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      setIsSaving(true);
+      const filledCount = updatedSections.filter((s) => s.content.trim()).length;
+      let status = "draft";
+      if (filledCount >= updatedSections.length) status = "complete";
+      else if (filledCount >= 3) status = "in-progress";
+
+      try {
+        await updatePaper.mutateAsync({
+          id: paperId,
+          updates: { sections: updatedSections, status },
+        });
+        setLastSaved(new Date());
+      } catch {
+        // silent fail for auto-save
+      }
+      setIsSaving(false);
+    }, 2000);
+  }, [paperId, updatePaper]);
 
   const currentSection = sections.find((s) => s.id === activeSection);
   const filledSections = sections.filter((s) => s.content.trim()).length;
 
   const updateContent = useCallback((content: string) => {
-    setSections((prev) =>
-      prev.map((s) => (s.id === activeSection ? { ...s, content } : s))
-    );
-  }, [activeSection]);
+    setSections((prev) => {
+      const updated = prev.map((s) => (s.id === activeSection ? { ...s, content } : s));
+      autoSave(updated);
+      return updated;
+    });
+  }, [activeSection, autoSave]);
+
+  const handleManualSave = async () => {
+    if (!paperId) return;
+    setIsSaving(true);
+    try {
+      const filledCount = sections.filter((s) => s.content.trim()).length;
+      let status = "draft";
+      if (filledCount >= sections.length) status = "complete";
+      else if (filledCount >= 3) status = "in-progress";
+
+      await updatePaper.mutateAsync({ id: paperId, updates: { sections, status } });
+      setLastSaved(new Date());
+      toast.success("Paper saved!");
+    } catch {
+      toast.error("Failed to save");
+    }
+    setIsSaving(false);
+  };
 
   const handleGenerateSection = useCallback(async () => {
     const titleContent = sections.find((s) => s.id === "title")?.content || "";
-    if (!titleContent.trim()) {
-      toast.error("Please add a paper title first");
-      return;
-    }
+    if (!titleContent.trim()) { toast.error("Please add a paper title first"); return; }
 
     setIsGenerating(true);
     let accumulated = "";
-
-    // Clear current content
-    setSections((prev) =>
-      prev.map((s) => (s.id === activeSection ? { ...s, content: "" } : s))
-    );
+    setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: "" } : s)));
 
     await generateSection(
       {
@@ -109,69 +153,104 @@ export default function PaperEditor() {
         journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
         existing_content: sections
           .filter((s) => s.content.trim() && s.id !== activeSection)
-          .map((s) => `${s.label}: ${s.content.slice(0, 300)}`)
+          .map((s) => `${s.label}: ${s.content.slice(0, 500)}`)
           .join("\n"),
       },
       {
         onDelta: (text) => {
           accumulated += text;
-          setSections((prev) =>
-            prev.map((s) => (s.id === activeSection ? { ...s, content: accumulated } : s))
-          );
+          const current = accumulated;
+          setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: current } : s)));
         },
         onDone: () => {
           setIsGenerating(false);
           toast.success(`${currentSection?.label} generated!`);
+          // trigger auto-save
+          setSections((prev) => {
+            autoSave(prev);
+            return prev;
+          });
         },
-        onError: (err) => {
-          setIsGenerating(false);
-          toast.error(err);
-        },
+        onError: (err) => { setIsGenerating(false); toast.error(err); },
       }
     );
-  }, [activeSection, sections, selectedJournal, paperMeta, currentSection]);
+  }, [activeSection, sections, selectedJournal, paperMeta, currentSection, autoSave]);
 
   const handleAiAssist = useCallback(async (instruction: string) => {
     const content = currentSection?.content || "";
-    if (!content.trim()) {
-      toast.error("No content to improve. Write or generate content first.");
-      return;
-    }
+    if (!content.trim()) { toast.error("No content to improve. Write or generate content first."); return; }
 
     setIsAssisting(true);
     let accumulated = "";
 
     await aiAssist(
-      {
-        instruction,
-        content,
-        journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
-      },
+      { instruction, content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
       {
         onDelta: (text) => {
           accumulated += text;
-          setSections((prev) =>
-            prev.map((s) => (s.id === activeSection ? { ...s, content: accumulated } : s))
-          );
+          const current = accumulated;
+          setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: current } : s)));
         },
         onDone: () => {
           setIsAssisting(false);
           setAiMessage("");
           toast.success("Content improved!");
+          setSections((prev) => { autoSave(prev); return prev; });
         },
-        onError: (err) => {
-          setIsAssisting(false);
-          toast.error(err);
-        },
+        onError: (err) => { setIsAssisting(false); toast.error(err); },
       }
     );
-  }, [activeSection, currentSection, selectedJournal]);
+  }, [activeSection, currentSection, selectedJournal, autoSave]);
 
-  const handleSendAiMessage = () => {
-    if (!aiMessage.trim()) return;
-    handleAiAssist(aiMessage);
+  const handleCreatePaper = async () => {
+    const title = sections.find((s) => s.id === "title")?.content || "Untitled Paper";
+    try {
+      const paper = await createPaper.mutateAsync({
+        title,
+        journal: selectedJournal,
+        domain: paperMeta.domain,
+        methodology_summary: paperMeta.methodology,
+        results_summary: paperMeta.results_summary,
+      });
+      setPaperId(paper.id);
+      navigate(`/editor/${paper.id}`, { replace: true });
+      toast.success("Paper created!");
+    } catch {
+      toast.error("Failed to create paper");
+    }
   };
 
+  const handleExport = () => {
+    const text = sections
+      .filter((s) => s.content.trim())
+      .map((s) => `\n${"=".repeat(40)}\n${s.label.toUpperCase()}\n${"=".repeat(40)}\n\n${s.content}`)
+      .join("\n");
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${sections.find((s) => s.id === "title")?.content || "paper"}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Paper exported!");
+  };
+
+  const copySection = () => {
+    if (currentSection?.content) {
+      navigator.clipboard.writeText(currentSection.content);
+      toast.success("Copied to clipboard!");
+    }
+  };
+
+  if (loadingPaper && !isNew) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+      </div>
+    );
+  }
+
+  // Journal picker
   if (showJournalPicker) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -181,16 +260,11 @@ export default function PaperEditor() {
           </button>
           <h1 className="font-display text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
           <p className="text-muted-foreground text-lg mb-10">Select your target journal to load the correct template.</p>
-
           <div className="grid gap-3 sm:grid-cols-2">
             {journalOptions.map((j) => (
               <button
                 key={j.id}
-                onClick={() => {
-                  setSelectedJournal(j.id);
-                  setShowJournalPicker(false);
-                  setShowMetaForm(true);
-                }}
+                onClick={() => { setSelectedJournal(j.id); setShowJournalPicker(false); setShowMetaForm(true); }}
                 className={`group rounded-xl border-2 p-6 text-left transition-all hover:shadow-card-hover ${
                   selectedJournal === j.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
                 }`}
@@ -205,13 +279,13 @@ export default function PaperEditor() {
     );
   }
 
+  // Meta form
   if (showMetaForm) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <motion.div className="max-w-xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">Paper Details</h1>
-          <p className="text-muted-foreground mb-8">Provide context so AI can generate better content. You can skip and fill these later.</p>
-
+          <p className="text-muted-foreground mb-8">Provide context so AI can generate better content.</p>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Paper Title *</label>
@@ -224,36 +298,27 @@ export default function PaperEditor() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Research Domain</label>
-              <input
-                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="e.g., Computer Vision, NLP, Cybersecurity"
-                value={paperMeta.domain}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, domain: e.target.value }))}
-              />
+              <input className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="e.g., Computer Vision, NLP, Cybersecurity" value={paperMeta.domain}
+                onChange={(e) => setPaperMeta((p) => ({ ...p, domain: e.target.value }))} />
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Methodology Summary</label>
-              <textarea
-                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
-                placeholder="Briefly describe your approach, models, or techniques used"
-                value={paperMeta.methodology}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))}
-              />
+              <textarea className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
+                placeholder="Briefly describe your approach" value={paperMeta.methodology}
+                onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))} />
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Key Results</label>
-              <textarea
-                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
-                placeholder="Summarize your main findings, accuracy metrics, etc."
-                value={paperMeta.results_summary}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))}
-              />
+              <textarea className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
+                placeholder="Summarize your main findings" value={paperMeta.results_summary}
+                onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))} />
             </div>
           </div>
-
           <div className="mt-8 flex gap-3">
-            <Button variant="outline" onClick={() => setShowMetaForm(false)}>Skip for now</Button>
-            <Button variant="hero" onClick={() => setShowMetaForm(false)} className="flex-1">
+            <Button variant="outline" onClick={() => { setShowMetaForm(false); handleCreatePaper(); }}>Skip</Button>
+            <Button variant="hero" onClick={() => { setShowMetaForm(false); handleCreatePaper(); }} className="flex-1" disabled={createPaper.isPending}>
+              {createPaper.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Start Writing <Sparkles className="ml-1 h-4 w-4" />
             </Button>
           </div>
@@ -283,8 +348,11 @@ export default function PaperEditor() {
           <span className={`inline-block rounded-md border px-2.5 py-0.5 text-xs font-semibold ${journalOptions.find((j) => j.id === selectedJournal)?.color || ""}`}>
             {journalOptions.find((j) => j.id === selectedJournal)?.name || "Journal"}
           </span>
-          <div className="mt-2 text-xs text-muted-foreground">{filledSections}/{sections.length} sections</div>
-          <div className="mt-1 h-1 rounded-full bg-muted">
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            <span>{filledSections}/{sections.length} sections</span>
+            <span>{wordCount.toLocaleString()} words</span>
+          </div>
+          <div className="mt-1 h-1.5 rounded-full bg-muted">
             <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(filledSections / sections.length) * 100}%` }} />
           </div>
         </div>
@@ -316,23 +384,31 @@ export default function PaperEditor() {
 
       {/* Main editor */}
       <main className="flex-1 flex flex-col min-w-0">
-        <div className="border-b border-border bg-card px-6 py-2 flex items-center justify-between">
+        {/* Toolbar */}
+        <div className="border-b border-border bg-card px-4 sm:px-6 py-2 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1">
             {[Bold, Italic, Underline, AlignLeft, List, Quote, Type].map((Icon, i) => (
               <button key={i} className="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                 <Icon className="h-4 w-4" />
               </button>
             ))}
+            <div className="h-5 w-px bg-border mx-1" />
+            <button onClick={copySection} className="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="Copy section">
+              <Copy className="h-4 w-4" />
+            </button>
           </div>
           <div className="flex items-center gap-2">
+            {/* Save status */}
+            <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">
+              {isSaving ? (
+                <><Loader2 className="h-3 w-3 animate-spin" /> Saving...</>
+              ) : lastSaved ? (
+                <><CheckCircle2 className="h-3 w-3 text-success" /> Saved</>
+              ) : null}
+            </span>
+
             {canGenerate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2 text-accent"
-                onClick={handleGenerateSection}
-                disabled={isBusy}
-              >
+              <Button variant="ghost" size="sm" className="gap-2 text-accent" onClick={handleGenerateSection} disabled={isBusy}>
                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 {isGenerating ? "Generating..." : "AI Generate"}
               </Button>
@@ -340,11 +416,16 @@ export default function PaperEditor() {
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
               <MessageSquare className="h-4 w-4 text-accent" /> AI Assist
             </Button>
-            <Button variant="outline" size="sm" className="gap-2"><Save className="h-4 w-4" /> Save</Button>
-            <Button variant="hero" size="sm" className="gap-2"><Download className="h-4 w-4" /> Export</Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleManualSave} disabled={isSaving || !paperId}>
+              <Save className="h-4 w-4" /> Save
+            </Button>
+            <Button variant="hero" size="sm" className="gap-2" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
           </div>
         </div>
 
+        {/* Editor */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto py-10 px-8">
@@ -359,12 +440,17 @@ export default function PaperEditor() {
                   )}
                 </div>
                 <textarea
-                  className="w-full min-h-[400px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body"
+                  className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
                   placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
                   value={currentSection?.content || ""}
                   onChange={(e) => updateContent(e.target.value)}
                   disabled={isBusy}
                 />
+                {currentSection?.content && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {currentSection.content.trim().split(/\s+/).filter(Boolean).length} words
+                  </div>
+                )}
               </motion.div>
             </div>
           </div>
@@ -388,36 +474,26 @@ export default function PaperEditor() {
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {canGenerate && (
-                    <button
-                      onClick={handleGenerateSection}
-                      disabled={isBusy}
-                      className="w-full rounded-lg bg-accent/10 border border-accent/20 p-3 text-sm text-left hover:bg-accent/20 transition-colors disabled:opacity-50"
-                    >
+                    <button onClick={handleGenerateSection} disabled={isBusy}
+                      className="w-full rounded-lg bg-accent/10 border border-accent/20 p-3 text-sm text-left hover:bg-accent/20 transition-colors disabled:opacity-50">
                       <p className="font-medium text-accent-foreground flex items-center gap-1">
                         <Sparkles className="h-3.5 w-3.5" /> Generate {currentSection?.label}
                       </p>
-                      <p className="text-muted-foreground mt-1 text-xs">AI writes this entire section based on your paper details</p>
+                      <p className="text-muted-foreground mt-1 text-xs">AI writes this entire section using your paper context</p>
                     </button>
                   )}
-
                   <div className="rounded-lg bg-muted p-3 text-sm">
-                    <p className="font-medium text-foreground mb-1">Quick Improvements</p>
+                    <p className="font-medium text-foreground mb-2">Quick Improvements</p>
                     {quickActions.map((action) => (
-                      <button
-                        key={action}
-                        onClick={() => handleAiAssist(action)}
-                        disabled={isBusy}
-                        className="block w-full text-left rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent/10 hover:text-accent-foreground transition-colors mt-1 disabled:opacity-50"
-                      >
+                      <button key={action} onClick={() => handleAiAssist(action)} disabled={isBusy}
+                        className="block w-full text-left rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent/10 hover:text-accent-foreground transition-colors mt-0.5 disabled:opacity-50">
                         {action}
                       </button>
                     ))}
                   </div>
                 </div>
-
                 <div className="border-t border-border p-3">
                   <div className="flex gap-2">
                     <input
@@ -425,10 +501,11 @@ export default function PaperEditor() {
                       placeholder="Custom instruction..."
                       value={aiMessage}
                       onChange={(e) => setAiMessage(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSendAiMessage()}
+                      onKeyDown={(e) => { if (e.key === "Enter" && aiMessage.trim()) handleAiAssist(aiMessage); }}
                       disabled={isBusy}
                     />
-                    <Button variant="hero" size="icon" className="shrink-0 h-9 w-9" onClick={handleSendAiMessage} disabled={isBusy}>
+                    <Button variant="hero" size="icon" className="shrink-0 h-9 w-9"
+                      onClick={() => { if (aiMessage.trim()) handleAiAssist(aiMessage); }} disabled={isBusy || !aiMessage.trim()}>
                       {isAssisting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
