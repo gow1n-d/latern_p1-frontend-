@@ -71,13 +71,12 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
   const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.content.trim());
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
-  const authorName = authorDetails?.authorName || "";
-  const coAuthor = authorDetails?.coAuthorName || "";
+  const names = authorDetails?.authorNames?.filter(n => n.trim()) || [];
   const dept = authorDetails?.department || "";
   const inst = authorDetails?.institution || "";
   const city = authorDetails?.city || "";
   const email = authorDetails?.email || "";
-  const hasAuthor = authorName.trim().length > 0;
+  const hasAuthor = names.length > 0;
 
   const isTwoCol = config.columns === 2;
   const marginPx = isTwoCol ? 48 : 72;
