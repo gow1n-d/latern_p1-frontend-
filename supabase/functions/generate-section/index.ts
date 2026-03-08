@@ -6,37 +6,37 @@ const corsHeaders = {
 };
 
 const sectionPrompts: Record<string, string> = {
-  abstract: "Write a concise academic abstract (150-250 words). Include background, objective, methods, results, and conclusion.",
-  introduction: "Write an academic introduction. Include background context, problem statement, research gap, objectives, and paper organization.",
-  literature: "Write a literature review. Summarize and critically analyze relevant prior work, identify research gaps, and position the current study.",
-  methodology: "Write a detailed methodology section. Describe research design, data collection methods, tools/frameworks, experimental setup, and evaluation metrics.",
-  results: "Write a results section presenting key findings. Describe quantitative/qualitative results objectively. Reference tables and figures.",
-  discussion: "Write a discussion section. Interpret results, explain significance, compare with prior work, discuss limitations.",
-  conclusion: "Write a conclusion. Summarize key contributions, restate main findings, discuss implications, suggest future directions.",
-  keywords: "Generate 5-8 relevant academic keywords/keyphrases, separated by commas.",
-  background: "Write a background/preliminaries section covering foundational concepts, definitions, and theoretical framework needed to understand this work.",
-  "experimental-setup": "Write an experimental setup section detailing datasets, hardware/software environment, hyperparameters, baselines, and evaluation protocol.",
-  experiments: "Write an experiments section describing experimental design, datasets used, baselines compared, and evaluation methodology.",
-  evaluation: "Write an evaluation section with metrics, benchmarks, comparative analysis, and statistical significance of results.",
-  theoretical: "Write a theoretical analysis section with formal proofs, complexity analysis, convergence guarantees, or mathematical foundations.",
-  "broader-impact": "Write a broader impact statement discussing societal implications, potential risks, benefits, and ethical considerations.",
-  limitations: "Write a limitations section honestly discussing constraints, assumptions, potential biases, and scope boundaries.",
-  ethics: "Write an ethics statement addressing data privacy, consent, potential biases, and responsible use of the research.",
-  highlights: "Write 3-5 bullet-point highlights summarizing the key contributions and novelty of this paper.",
-  "ccs-concepts": "Generate ACM CCS concepts classification for this paper (e.g., • Computing methodologies → Machine learning).",
-  acknowledgements: "Write an acknowledgements section thanking funding bodies, collaborators, and resources used.",
-  "data-availability": "Write a data availability statement describing how and where the data and code can be accessed.",
-  "supporting-info": "Write a supporting information section describing supplementary materials, datasets, or additional analyses.",
-  supplementary: "Write a supplementary materials section with additional experiments, proofs, or data not in the main paper.",
-  implementation: "Write an implementation details section covering architecture specifics, training procedures, and engineering decisions.",
-  ablation: "Write an ablation study section systematically analyzing the contribution of each component of the proposed method.",
-  analysis: "Write a detailed analysis section examining error cases, performance breakdowns, and qualitative examples.",
-  body: "Write the main body of the paper with well-structured arguments, evidence, and analysis.",
-  coi: "Write a declaration of competing interest / conflicts of interest statement.",
-  funding: "Write a funding statement acknowledging financial support and grant numbers.",
-  reproducibility: "Write a reproducibility statement detailing steps taken to ensure reproducibility of results.",
-  "materials-methods": "Write a materials and methods section combining both material descriptions and methodological procedures.",
-  methods: "Write a methods section describing the experimental and analytical procedures used in this study.",
+  abstract: "Write a concise academic abstract (150-250 words). Include background, objective, methods, results, and conclusion. Use ONLY the information provided below — do not invent data, statistics, or findings.",
+  introduction: "Write an academic introduction. Include background context, problem statement, research gap, objectives, and paper organization. Base everything strictly on the provided details.",
+  literature: "Write a literature review section. Summarize and critically analyze relevant prior work concepts based ONLY on what the user describes. Do NOT fabricate author names, paper titles, years, or citation numbers. If specific references are not provided, discuss concepts and research directions generally without inventing citations.",
+  methodology: "Write a detailed methodology section. Describe research design, data collection methods, tools/frameworks, experimental setup, and evaluation metrics. Use ONLY the methodology details provided by the user.",
+  results: "Write a results section presenting key findings. Use ONLY the results/data the user has provided. Do NOT invent numbers, percentages, p-values, or statistical outcomes. If specific numbers are not given, describe results qualitatively.",
+  discussion: "Write a discussion section. Interpret the results provided, explain significance, and discuss limitations. Do NOT fabricate comparisons with studies not mentioned by the user.",
+  conclusion: "Write a conclusion. Summarize key contributions and main findings based ONLY on what was provided. Suggest future directions that logically follow from the actual work described.",
+  keywords: "Generate 5-8 relevant academic keywords/keyphrases based strictly on the paper title and domain provided. Separate by commas.",
+  background: "Write a background/preliminaries section covering foundational concepts relevant to the domain specified. Present well-established facts only — no speculative claims.",
+  "experimental-setup": "Write an experimental setup section. Use ONLY the setup details (datasets, hardware, parameters) provided by the user. Do NOT invent dataset names, sizes, or specifications.",
+  experiments: "Write an experiments section based strictly on the user's methodology and results. Do NOT fabricate experimental outcomes or baselines not mentioned.",
+  evaluation: "Write an evaluation section. Use ONLY the metrics and results provided. Do NOT invent benchmark scores or statistical measures.",
+  theoretical: "Write a theoretical analysis section. Present only well-established mathematical foundations relevant to the described methodology. Do NOT fabricate proofs or theorems.",
+  "broader-impact": "Write a broader impact statement discussing societal implications based on the actual research described. Keep claims proportional to the work's scope.",
+  limitations: "Write a limitations section honestly discussing constraints based on the described methodology. Do NOT invent limitations not related to the actual work.",
+  ethics: "Write an ethics statement relevant to the research domain and methodology described.",
+  highlights: "Write 3-5 bullet-point highlights summarizing key contributions based ONLY on what the user has described.",
+  "ccs-concepts": "Generate ACM CCS concepts classification based strictly on the paper title and domain provided.",
+  acknowledgements: "Write a brief, generic acknowledgements section. Do NOT fabricate grant numbers or funding body names unless provided.",
+  "data-availability": "Write a data availability statement. Keep it generic unless the user provides specific repository or access details.",
+  "supporting-info": "Write a supporting information section describing what supplementary materials might accompany this work, based on the methodology described.",
+  supplementary: "Write a supplementary materials section based on the methodology and results provided.",
+  implementation: "Write an implementation details section based ONLY on the methodology and tools described by the user.",
+  ablation: "Write an ablation study section. Use ONLY the components described in the user's methodology. Do NOT invent ablation results or percentages.",
+  analysis: "Write a detailed analysis section based on the results provided. Do NOT fabricate error cases or examples.",
+  body: "Write the main body of the paper with well-structured arguments based strictly on the provided information.",
+  coi: "Write a standard declaration of competing interest / conflicts of interest statement.",
+  funding: "Write a funding statement. Keep it generic unless specific funding details are provided.",
+  reproducibility: "Write a reproducibility statement based on the methodology described.",
+  "materials-methods": "Write a materials and methods section using ONLY the materials and procedures described by the user.",
+  methods: "Write a methods section using ONLY the procedures and tools described by the user.",
 };
 
 serve(async (req) => {
@@ -48,21 +48,32 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const sectionGuide = sectionPrompts[section] || `Write the "${section}" section for an academic research paper. Use formal academic writing style.`;
+    const sectionGuide = sectionPrompts[section] || `Write the "${section}" section for an academic research paper. Use formal academic writing style. Use ONLY information provided below.`;
 
-    const systemPrompt = `You are an expert academic writing assistant specializing in research papers for ${journal || "IEEE"} journal publication. You produce publication-ready content with proper academic tone, structure, and rigor. Do not include section headings in your output — just the content. Do not use markdown formatting.`;
+    const systemPrompt = `You are an expert academic writing assistant specializing in research papers for ${journal || "IEEE"} journal publication.
+
+CRITICAL ANTI-HALLUCINATION RULES — FOLLOW STRICTLY:
+1. Use ONLY the information provided by the user (title, domain, methodology, results). Do NOT invent, fabricate, or assume any data, statistics, findings, author names, paper titles, years, or citations.
+2. If specific data/numbers are not provided, describe concepts qualitatively. Never generate fake percentages, p-values, accuracy scores, or benchmark results.
+3. Do NOT fabricate references or citations. If the user hasn't provided specific references, discuss research directions and concepts without citing specific papers.
+4. Do NOT invent dataset names, sizes, model names, or experimental configurations not mentioned by the user.
+5. Use hedging language ("this approach may...", "the proposed method aims to...") when the user hasn't provided concrete results.
+6. Maintain strict academic tone, proper structure, and publication-ready quality.
+7. Do not include section headings in your output — just the content.
+8. Do not use markdown formatting.
+9. Every claim must be directly traceable to the user's provided information.`;
 
     const userPrompt = `${sectionGuide}
 
-Paper details:
+Paper details provided by the researcher:
 - Title: ${title || "Not specified"}
 - Research Domain: ${domain || "Not specified"}
 - Methodology: ${methodology || "Not specified"}
 - Key Results: ${results_summary || "Not specified"}
 - Target Journal: ${journal || "IEEE"}
-${existing_content ? `\nExisting content for context:\n${existing_content}` : ""}
+${existing_content ? `\nExisting content from other sections (use for consistency, do NOT contradict):\n${existing_content}` : ""}
 
-Write the ${section} section now.`;
+REMINDER: Write ONLY based on the details above. If a detail says "Not specified", acknowledge the gap gracefully without inventing information. Write the ${section} section now.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -71,12 +82,13 @@ Write the ${section} section now.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         stream: true,
+        temperature: 0.2,
       }),
     });
 

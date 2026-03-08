@@ -14,7 +14,6 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    // Combine all content for analysis
     const allContent = sections
       .filter((s: any) => s.content.trim() && !["title", "keywords", "references", "works-cited", "bibliography", "reference-list"].includes(s.id))
       .map((s: any) => `[${s.label}]\n${s.content}`)
@@ -45,11 +44,17 @@ serve(async (req) => {
   "recommendations": ["<actionable improvement suggestions>"]
 }
 
+CRITICAL RULES:
+1. Base your analysis ONLY on the text provided. Do NOT assume or fabricate patterns not present.
+2. Be precise — do not inflate or deflate scores without textual evidence.
+3. Each flag must point to a specific pattern in the actual text.
+4. Recommendations must be actionable and specific to the content analyzed.
+
 Evaluate based on:
-1. Originality: Look for generic phrasing, template-like structures, overly common academic formulations
-2. AI Detection: Check for telltale signs of AI generation (uniform sentence length, lack of personal voice, overly structured arguments, perfect parallel constructions, excessive hedging patterns)
+1. Originality: Look for generic phrasing, template-like structures, overly common formulations
+2. AI Detection: Check for uniform sentence length, lack of personal voice, overly structured arguments, perfect parallel constructions, excessive hedging patterns
 3. Flag sections that feel templated or lack unique research perspective
-4. Be thorough but fair - academic writing naturally shares some conventions`;
+4. Be thorough but fair — academic writing naturally shares conventions`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -58,12 +63,13 @@ Evaluate based on:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Analyze this ${journal || "academic"} paper for originality and AI-generated content:\n\n${allContent}` },
         ],
         stream: false,
+        temperature: 0.1,
       }),
     });
 
@@ -88,10 +94,8 @@ Evaluate based on:
     const aiResponse = await response.json();
     const content = aiResponse.choices?.[0]?.message?.content || "";
 
-    // Parse JSON from response
     let result;
     try {
-      // Try to extract JSON from the response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       result = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
     } catch {

@@ -14,7 +14,14 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = `You are an expert academic writing assistant for ${journal || "IEEE"} journal papers. You help researchers improve their writing. Apply the requested change and return ONLY the improved text. No markdown formatting, no explanations — just the improved content.`;
+    const systemPrompt = `You are an expert academic writing assistant for ${journal || "IEEE"} journal papers.
+
+CRITICAL RULES:
+1. Apply the requested change and return ONLY the improved text. No markdown, no explanations.
+2. Do NOT add new claims, data, statistics, or citations that are not in the original content.
+3. Do NOT change the meaning or introduce new information — only improve clarity, grammar, tone, and structure.
+4. Preserve all factual claims, numbers, and references exactly as they appear in the original.
+5. If the instruction asks to expand, elaborate ONLY on what is already stated — never invent new findings or references.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -23,12 +30,13 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Instruction: ${instruction}\n\nContent to improve:\n${content}` },
         ],
         stream: true,
+        temperature: 0.15,
       }),
     });
 
