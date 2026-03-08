@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, ChevronLeft, Save, Download, Sparkles, Check,
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
-  Underline, AlignLeft, List, Quote, Type
+  Underline, AlignLeft, List, Quote, Type, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
+import { generateSection, aiAssist } from "@/lib/ai";
+import { toast } from "sonner";
 
 const journalOptions = [
   { id: "ieee", name: "IEEE", color: "bg-blue-500/10 text-blue-700 border-blue-200" },
@@ -31,10 +33,20 @@ const defaultSections = [
 
 const sampleContent: Record<string, string> = {
   title: "Deep Learning Approaches for Medical Image Segmentation: A Comprehensive Survey",
-  abstract: "This paper presents a comprehensive survey of deep learning methods applied to medical image segmentation. We review convolutional neural network architectures, transformer-based models, and hybrid approaches that have achieved state-of-the-art performance across various medical imaging modalities including CT, MRI, and X-ray. Our analysis covers 150+ papers published between 2019-2025, categorizing methods by architecture type, loss function design, and data augmentation strategies. We identify key challenges including limited annotated data, class imbalance, and domain shift, while proposing future research directions.",
-  keywords: "Deep Learning, Medical Image Segmentation, Convolutional Neural Networks, U-Net, Transformer, Transfer Learning",
-  introduction: "Medical image segmentation is a fundamental task in computer-aided diagnosis and treatment planning. The accurate delineation of anatomical structures and pathological regions from medical images enables clinicians to make informed decisions about patient care.\n\nRecent advances in deep learning have revolutionized this field, with methods consistently outperforming traditional approaches based on thresholding, region growing, and atlas-based techniques. The introduction of U-Net by Ronneberger et al. (2015) marked a paradigm shift, demonstrating that encoder-decoder architectures with skip connections could achieve remarkable segmentation accuracy even with limited training data.",
+  abstract: "This paper presents a comprehensive survey of deep learning methods applied to medical image segmentation.",
+  keywords: "Deep Learning, Medical Image Segmentation, U-Net, Transformer, Transfer Learning",
+  introduction: "Medical image segmentation is a fundamental task in computer-aided diagnosis and treatment planning.",
 };
+
+const AI_GENERATABLE = ["abstract", "keywords", "introduction", "literature", "methodology", "results", "discussion", "conclusion"];
+
+const quickActions = [
+  "Improve writing style",
+  "Make more concise",
+  "Expand with details",
+  "Add academic tone",
+  "Fix grammar",
+];
 
 export default function PaperEditor() {
   const navigate = useNavigate();
@@ -52,30 +64,123 @@ export default function PaperEditor() {
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
   const [showJournalPicker, setShowJournalPicker] = useState(isNew);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAssisting, setIsAssisting] = useState(false);
+
+  // Paper metadata for AI context
+  const [paperMeta, setPaperMeta] = useState({
+    domain: "",
+    methodology: "",
+    results_summary: "",
+  });
+  const [showMetaForm, setShowMetaForm] = useState(false);
 
   const currentSection = sections.find((s) => s.id === activeSection);
+  const filledSections = sections.filter((s) => s.content.trim()).length;
 
-  const updateContent = (content: string) => {
+  const updateContent = useCallback((content: string) => {
     setSections((prev) =>
       prev.map((s) => (s.id === activeSection ? { ...s, content } : s))
     );
-  };
+  }, [activeSection]);
 
-  const filledSections = sections.filter((s) => s.content.trim()).length;
+  const handleGenerateSection = useCallback(async () => {
+    const titleContent = sections.find((s) => s.id === "title")?.content || "";
+    if (!titleContent.trim()) {
+      toast.error("Please add a paper title first");
+      return;
+    }
+
+    setIsGenerating(true);
+    let accumulated = "";
+
+    // Clear current content
+    setSections((prev) =>
+      prev.map((s) => (s.id === activeSection ? { ...s, content: "" } : s))
+    );
+
+    await generateSection(
+      {
+        section: activeSection,
+        title: titleContent,
+        domain: paperMeta.domain,
+        methodology: paperMeta.methodology,
+        results_summary: paperMeta.results_summary,
+        journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+        existing_content: sections
+          .filter((s) => s.content.trim() && s.id !== activeSection)
+          .map((s) => `${s.label}: ${s.content.slice(0, 300)}`)
+          .join("\n"),
+      },
+      {
+        onDelta: (text) => {
+          accumulated += text;
+          setSections((prev) =>
+            prev.map((s) => (s.id === activeSection ? { ...s, content: accumulated } : s))
+          );
+        },
+        onDone: () => {
+          setIsGenerating(false);
+          toast.success(`${currentSection?.label} generated!`);
+        },
+        onError: (err) => {
+          setIsGenerating(false);
+          toast.error(err);
+        },
+      }
+    );
+  }, [activeSection, sections, selectedJournal, paperMeta, currentSection]);
+
+  const handleAiAssist = useCallback(async (instruction: string) => {
+    const content = currentSection?.content || "";
+    if (!content.trim()) {
+      toast.error("No content to improve. Write or generate content first.");
+      return;
+    }
+
+    setIsAssisting(true);
+    let accumulated = "";
+
+    await aiAssist(
+      {
+        instruction,
+        content,
+        journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+      },
+      {
+        onDelta: (text) => {
+          accumulated += text;
+          setSections((prev) =>
+            prev.map((s) => (s.id === activeSection ? { ...s, content: accumulated } : s))
+          );
+        },
+        onDone: () => {
+          setIsAssisting(false);
+          setAiMessage("");
+          toast.success("Content improved!");
+        },
+        onError: (err) => {
+          setIsAssisting(false);
+          toast.error(err);
+        },
+      }
+    );
+  }, [activeSection, currentSection, selectedJournal]);
+
+  const handleSendAiMessage = () => {
+    if (!aiMessage.trim()) return;
+    handleAiAssist(aiMessage);
+  };
 
   if (showJournalPicker) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <motion.div
-          className="max-w-2xl w-full"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <motion.div className="max-w-2xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-8 text-sm">
             <ChevronLeft className="h-4 w-4" /> Back to Dashboard
           </button>
           <h1 className="font-display text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
-          <p className="text-muted-foreground text-lg mb-10">Select your target journal to load the correct template and formatting rules.</p>
+          <p className="text-muted-foreground text-lg mb-10">Select your target journal to load the correct template.</p>
 
           <div className="grid gap-3 sm:grid-cols-2">
             {journalOptions.map((j) => (
@@ -84,19 +189,14 @@ export default function PaperEditor() {
                 onClick={() => {
                   setSelectedJournal(j.id);
                   setShowJournalPicker(false);
+                  setShowMetaForm(true);
                 }}
                 className={`group rounded-xl border-2 p-6 text-left transition-all hover:shadow-card-hover ${
-                  selectedJournal === j.id
-                    ? "border-accent bg-accent/5"
-                    : "border-border bg-card hover:border-accent/30"
+                  selectedJournal === j.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
                 }`}
               >
-                <span className={`inline-block rounded-md border px-3 py-1 text-sm font-semibold ${j.color}`}>
-                  {j.name}
-                </span>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {j.name} formatted template with proper citation style, margins, and section structure.
-                </p>
+                <span className={`inline-block rounded-md border px-3 py-1 text-sm font-semibold ${j.color}`}>{j.name}</span>
+                <p className="mt-3 text-sm text-muted-foreground">{j.name} formatted template with proper citation style and structure.</p>
               </button>
             ))}
           </div>
@@ -105,9 +205,69 @@ export default function PaperEditor() {
     );
   }
 
+  if (showMetaForm) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <motion.div className="max-w-xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="font-display text-3xl font-bold text-foreground mb-2">Paper Details</h1>
+          <p className="text-muted-foreground mb-8">Provide context so AI can generate better content. You can skip and fill these later.</p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Paper Title *</label>
+              <input
+                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="e.g., Deep Learning for Medical Image Segmentation"
+                value={sections.find((s) => s.id === "title")?.content || ""}
+                onChange={(e) => setSections((prev) => prev.map((s) => s.id === "title" ? { ...s, content: e.target.value } : s))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Research Domain</label>
+              <input
+                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="e.g., Computer Vision, NLP, Cybersecurity"
+                value={paperMeta.domain}
+                onChange={(e) => setPaperMeta((p) => ({ ...p, domain: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Methodology Summary</label>
+              <textarea
+                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
+                placeholder="Briefly describe your approach, models, or techniques used"
+                value={paperMeta.methodology}
+                onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Key Results</label>
+              <textarea
+                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
+                placeholder="Summarize your main findings, accuracy metrics, etc."
+                value={paperMeta.results_summary}
+                onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="mt-8 flex gap-3">
+            <Button variant="outline" onClick={() => setShowMetaForm(false)}>Skip for now</Button>
+            <Button variant="hero" onClick={() => setShowMetaForm(false)} className="flex-1">
+              Start Writing <Sparkles className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const canGenerate = AI_GENERATABLE.includes(activeSection);
+  const isBusy = isGenerating || isAssisting;
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Left sidebar - sections */}
+      {/* Left sidebar */}
       <aside className="w-64 border-r border-border bg-card flex flex-col shrink-0">
         <div className="p-4 border-b border-border">
           <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
@@ -119,44 +279,31 @@ export default function PaperEditor() {
           </div>
         </div>
 
-        {/* Journal badge */}
         <div className="px-4 pt-4 pb-2">
-          <span className={`inline-block rounded-md border px-2.5 py-0.5 text-xs font-semibold ${
-            journalOptions.find((j) => j.id === selectedJournal)?.color || ""
-          }`}>
+          <span className={`inline-block rounded-md border px-2.5 py-0.5 text-xs font-semibold ${journalOptions.find((j) => j.id === selectedJournal)?.color || ""}`}>
             {journalOptions.find((j) => j.id === selectedJournal)?.name || "Journal"}
           </span>
-          <div className="mt-2 text-xs text-muted-foreground">
-            {filledSections}/{sections.length} sections
-          </div>
+          <div className="mt-2 text-xs text-muted-foreground">{filledSections}/{sections.length} sections</div>
           <div className="mt-1 h-1 rounded-full bg-muted">
             <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(filledSections / sections.length) * 100}%` }} />
           </div>
         </div>
 
-        {/* Section list */}
         <nav className="flex-1 overflow-y-auto px-2 py-2">
           {sections.map((s) => (
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
               className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left transition-colors mb-0.5 ${
-                activeSection === s.id
-                  ? "bg-accent/10 text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              {s.content.trim() ? (
-                <Check className="h-3.5 w-3.5 text-success shrink-0" />
-              ) : (
-                <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />
-              )}
+              {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
               {s.label}
             </button>
           ))}
         </nav>
 
-        {/* Bottom actions */}
         <div className="border-t border-border p-3 space-y-2">
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start">
             <AlertTriangle className="h-4 w-4" /> Validate Format
@@ -169,7 +316,6 @@ export default function PaperEditor() {
 
       {/* Main editor */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Toolbar */}
         <div className="border-b border-border bg-card px-6 py-2 flex items-center justify-between">
           <div className="flex items-center gap-1">
             {[Bold, Italic, Underline, AlignLeft, List, Quote, Type].map((Icon, i) => (
@@ -179,31 +325,45 @@ export default function PaperEditor() {
             ))}
           </div>
           <div className="flex items-center gap-2">
+            {canGenerate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-accent"
+                onClick={handleGenerateSection}
+                disabled={isBusy}
+              >
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {isGenerating ? "Generating..." : "AI Generate"}
+              </Button>
+            )}
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
-              <Sparkles className="h-4 w-4 text-accent" /> AI Assistant
+              <MessageSquare className="h-4 w-4 text-accent" /> AI Assist
             </Button>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Save className="h-4 w-4" /> Save
-            </Button>
-            <Button variant="hero" size="sm" className="gap-2">
-              <Download className="h-4 w-4" /> Export
-            </Button>
+            <Button variant="outline" size="sm" className="gap-2"><Save className="h-4 w-4" /> Save</Button>
+            <Button variant="hero" size="sm" className="gap-2"><Download className="h-4 w-4" /> Export</Button>
           </div>
         </div>
 
-        {/* Editor area */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto py-10 px-8">
               <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                <h2 className="font-display text-2xl font-bold text-foreground mb-4">
-                  {currentSection?.label}
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
+                  {isBusy && (
+                    <span className="flex items-center gap-2 text-sm text-accent">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {isGenerating ? "AI is writing..." : "Improving..."}
+                    </span>
+                  )}
+                </div>
                 <textarea
                   className="w-full min-h-[400px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body"
-                  placeholder={`Start writing your ${currentSection?.label.toLowerCase()}...`}
+                  placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
                   value={currentSection?.content || ""}
                   onChange={(e) => updateContent(e.target.value)}
+                  disabled={isBusy}
                 />
               </motion.div>
             </div>
@@ -230,25 +390,31 @@ export default function PaperEditor() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground mb-1">Quick Actions</p>
-                    {["Generate this section", "Improve writing style", "Add citations", "Make more concise", "Expand with details"].map((action) => (
+                  {canGenerate && (
+                    <button
+                      onClick={handleGenerateSection}
+                      disabled={isBusy}
+                      className="w-full rounded-lg bg-accent/10 border border-accent/20 p-3 text-sm text-left hover:bg-accent/20 transition-colors disabled:opacity-50"
+                    >
+                      <p className="font-medium text-accent-foreground flex items-center gap-1">
+                        <Sparkles className="h-3.5 w-3.5" /> Generate {currentSection?.label}
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-xs">AI writes this entire section based on your paper details</p>
+                    </button>
+                  )}
+
+                  <div className="rounded-lg bg-muted p-3 text-sm">
+                    <p className="font-medium text-foreground mb-1">Quick Improvements</p>
+                    {quickActions.map((action) => (
                       <button
                         key={action}
-                        className="block w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-accent/10 hover:text-accent-foreground transition-colors mt-1"
+                        onClick={() => handleAiAssist(action)}
+                        disabled={isBusy}
+                        className="block w-full text-left rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent/10 hover:text-accent-foreground transition-colors mt-1 disabled:opacity-50"
                       >
                         {action}
                       </button>
                     ))}
-                  </div>
-
-                  <div className="rounded-lg bg-accent/5 border border-accent/20 p-3 text-sm">
-                    <p className="text-accent-foreground font-medium flex items-center gap-1">
-                      <MessageSquare className="h-3.5 w-3.5" /> AI Chat
-                    </p>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Ask me to rewrite, improve, or generate content for your paper.
-                    </p>
                   </div>
                 </div>
 
@@ -256,12 +422,14 @@ export default function PaperEditor() {
                   <div className="flex gap-2">
                     <input
                       className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="Ask AI..."
+                      placeholder="Custom instruction..."
                       value={aiMessage}
                       onChange={(e) => setAiMessage(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSendAiMessage()}
+                      disabled={isBusy}
                     />
-                    <Button variant="hero" size="icon" className="shrink-0 h-9 w-9">
-                      <Send className="h-4 w-4" />
+                    <Button variant="hero" size="icon" className="shrink-0 h-9 w-9" onClick={handleSendAiMessage} disabled={isBusy}>
+                      {isAssisting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
