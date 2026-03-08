@@ -705,6 +705,10 @@ export default function PaperEditor() {
                 {isGenerating ? "Generating..." : "AI Generate"}
               </Button>
             )}
+            <Button variant="ghost" size="sm" className="gap-2 text-emerald-600" onClick={handleHumanize} disabled={isBusy}>
+              {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
+              {isHumanizing ? "Humanizing..." : "Humanize"}
+            </Button>
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
               <MessageSquare className="h-4 w-4 text-accent" /> AI Assist
             </Button>
