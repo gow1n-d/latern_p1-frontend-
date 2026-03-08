@@ -391,14 +391,14 @@ export default function PaperEditor() {
 
   const handleExportPDF = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToPDF(sections, selectedJournal, title);
+    exportToPDF(sections, selectedJournal, title, authorDetails);
     setShowExportMenu(false);
     toast.success("PDF exported!");
   };
 
   const handleExportLaTeX = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToLaTeX(sections, selectedJournal, title);
+    exportToLaTeX(sections, selectedJournal, title, authorDetails);
     setShowExportMenu(false);
     toast.success("LaTeX exported!");
   };
@@ -412,7 +412,7 @@ export default function PaperEditor() {
 
   const handleExportWord = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToWord(sections, selectedJournal, title);
+    exportToWord(sections, selectedJournal, title, authorDetails);
     setShowExportMenu(false);
     toast.success("Word document exported!");
   };
