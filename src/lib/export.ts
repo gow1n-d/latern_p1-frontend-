@@ -138,7 +138,12 @@ export function exportToLaTeX(sections: PaperSection[], journal: string, paperTi
   const abstract = sections.find((s) => s.id === "abstract")?.content || "";
   const keywords = sections.find((s) => s.id === "keywords")?.content || "";
 
-  const docClass = journal === "ieee" ? "IEEEtran" : "article";
+  const docClassMap: Record<string, string> = {
+    ieee: "IEEEtran", "ieee-conf": "IEEEtran", acm: "acmart", "acm-conf": "acmart",
+    neurips: "article", icml: "article", cvpr: "IEEEtran", aaai: "aaai",
+    iclr: "article", acl: "acl", apa7: "apa7", mla: "article",
+  };
+  const docClass = docClassMap[journal] || "article";
   const contentSections = sections.filter((s) => !["title", "abstract", "keywords"].includes(s.id) && s.content.trim());
 
   let latex = `\\documentclass{${docClass}}

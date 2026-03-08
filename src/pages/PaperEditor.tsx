@@ -301,28 +301,36 @@ export default function PaperEditor() {
   // Journal picker
   if (showJournalPicker) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <motion.div className="max-w-2xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-8 text-sm">
-            <ChevronLeft className="h-4 w-4" /> Back to Dashboard
-          </button>
-          <h1 className="font-display text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
-          <p className="text-muted-foreground text-lg mb-10">Select your target journal to load the correct template.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {journalOptions.map((j) => (
-              <button
-                key={j.id}
-                onClick={() => { setSelectedJournal(j.id); setShowJournalPicker(false); setShowMetaForm(true); }}
-                className={`group rounded-xl border-2 p-6 text-left transition-all hover:shadow-card-hover ${
-                  selectedJournal === j.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
-                }`}
-              >
-                <span className={`inline-block rounded-md border px-3 py-1 text-sm font-semibold ${j.color}`}>{j.name}</span>
-                <p className="mt-3 text-sm text-muted-foreground">{j.name} formatted template with proper citation style and structure.</p>
-              </button>
+      <div className="min-h-screen bg-background overflow-y-auto p-6">
+        <div className="max-w-4xl mx-auto">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-8 text-sm">
+              <ChevronLeft className="h-4 w-4" /> Back to Dashboard
+            </button>
+            <h1 className="font-display text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
+            <p className="text-muted-foreground text-lg mb-10">Select your target format to load the correct template.</p>
+
+            {formatCategories.map((cat) => (
+              <div key={cat.label} className="mb-8">
+                <h2 className="font-display text-lg font-semibold text-foreground mb-3">{cat.label}</h2>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {cat.formats.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setSelectedJournal(f.id); setShowJournalPicker(false); setShowMetaForm(true); }}
+                      className={`group rounded-xl border-2 p-5 text-left transition-all hover:shadow-card-hover ${
+                        selectedJournal === f.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
+                      }`}
+                    >
+                      <span className={`inline-block rounded-md border px-3 py-1 text-xs font-semibold ${f.color}`}>{f.name}</span>
+                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
-          </div>
-        </motion.div>
+          </motion.div>
+        </div>
       </div>
     );
   }
