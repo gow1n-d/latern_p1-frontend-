@@ -91,6 +91,12 @@ export default function Dashboard() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate("/profile")} className="gap-2">
+                  <User className="h-4 w-4" /> Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/pricing")} className="gap-2">
+                  <Settings className="h-4 w-4" /> Upgrade Plan
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleSignOut} className="gap-2 text-destructive">
                   <LogOut className="h-4 w-4" /> Sign Out
                 </DropdownMenuItem>
