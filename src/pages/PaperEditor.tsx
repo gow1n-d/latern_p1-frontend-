@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist } from "@/lib/ai";
+import { exportToPDF, exportToText, exportToLaTeX } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection } from "@/hooks/usePapers";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
