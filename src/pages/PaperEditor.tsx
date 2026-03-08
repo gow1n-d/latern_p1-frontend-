@@ -503,8 +503,8 @@ export default function PaperEditor() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Left sidebar */}
-      <aside className="w-64 border-r border-border bg-card flex flex-col shrink-0">
+      {/* Left sidebar — hidden on mobile */}
+      <aside className="hidden md:flex w-64 border-r border-border bg-card flex-col shrink-0">
         <div className="p-4 border-b border-border">
           <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
             <ChevronLeft className="h-4 w-4" /> Dashboard
