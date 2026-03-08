@@ -190,7 +190,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
           </div>
         )}
 
-        {/* Title */}
+        {/* Title — only first line rendered as title, rest ignored */}
         <h1 style={{
           fontFamily: "'Times New Roman', Times, serif",
           fontSize: config.titleSize,
@@ -201,7 +201,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
           marginBottom: 8,
           letterSpacing: -0.2,
         }}>
-          {titleSection?.content || "Untitled Paper"}
+          {(titleSection?.content || "Untitled Paper").split("\n")[0].slice(0, 300)}
         </h1>
 
         {/* Author block */}
