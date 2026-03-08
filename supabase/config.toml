@@ -1,1 +1,7 @@
 project_id = "fudnetxikhjyekvvddix"
+
+[functions.generate-section]
+verify_jwt = false
+
+[functions.ai-assist]
+verify_jwt = false
