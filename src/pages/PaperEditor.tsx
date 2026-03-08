@@ -671,16 +671,23 @@ export default function PaperEditor() {
 
   // Meta form
   if (showMetaForm) {
+    const inputClass = "w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <motion.div className="max-w-xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="font-display text-3xl font-bold text-foreground mb-2">Paper Details</h1>
-          <p className="text-muted-foreground mb-8">Provide context so AI can generate better content.</p>
-          <div className="space-y-4">
+        <motion.div className="max-w-2xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-accent" />
+            </div>
+            <h1 className="font-display text-3xl font-bold text-foreground">Paper Details</h1>
+          </div>
+          <p className="text-muted-foreground mb-8 ml-[52px]">Provide context so AI can generate better content.</p>
+
+          {/* Paper info */}
+          <div className="space-y-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Paper Title *</label>
-              <input
-                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              <input className={inputClass}
                 placeholder="e.g., Deep Learning for Medical Image Segmentation"
                 value={sections.find((s) => s.id === "title")?.content || ""}
                 onChange={(e) => setSections((prev) => prev.map((s) => s.id === "title" ? { ...s, content: e.target.value } : s))}
@@ -688,24 +695,72 @@ export default function PaperEditor() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Research Domain</label>
-              <input className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              <input className={inputClass}
                 placeholder="e.g., Computer Vision, NLP, Cybersecurity" value={paperMeta.domain}
                 onChange={(e) => setPaperMeta((p) => ({ ...p, domain: e.target.value }))} />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Methodology Summary</label>
-              <textarea className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
-                placeholder="Briefly describe your approach" value={paperMeta.methodology}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Key Results</label>
-              <textarea className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
-                placeholder="Summarize your main findings" value={paperMeta.results_summary}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Methodology Summary</label>
+                <textarea className={`${inputClass} resize-none h-20`}
+                  placeholder="Briefly describe your approach" value={paperMeta.methodology}
+                  onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Key Results</label>
+                <textarea className={`${inputClass} resize-none h-20`}
+                  placeholder="Summarize your main findings" value={paperMeta.results_summary}
+                  onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))} />
+              </div>
             </div>
           </div>
-          <div className="mt-8 flex gap-3">
+
+          {/* Author details */}
+          <div className="border-t border-border pt-6 mb-6">
+            <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <User className="h-4 w-4 text-accent" /> Author Details
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Author Name *</label>
+                <input className={inputClass} placeholder="e.g., John Doe"
+                  value={authorDetails.authorName}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, authorName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Co-Author(s)</label>
+                <input className={inputClass} placeholder="e.g., Jane Smith, Bob Lee"
+                  value={authorDetails.coAuthorName}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, coAuthorName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Department</label>
+                <input className={inputClass} placeholder="e.g., Department of Computer Science"
+                  value={authorDetails.department}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, department: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Institution</label>
+                <input className={inputClass} placeholder="e.g., MIT, Stanford University"
+                  value={authorDetails.institution}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, institution: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">City, Country</label>
+                <input className={inputClass} placeholder="e.g., Cambridge, USA"
+                  value={authorDetails.city}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, city: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Correspondence Email</label>
+                <input className={inputClass} placeholder="e.g., author@university.edu" type="email"
+                  value={authorDetails.email}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, email: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
             <Button variant="outline" onClick={() => { setShowMetaForm(false); handleCreatePaper(); }}>Skip</Button>
             <Button variant="hero" onClick={() => { setShowMetaForm(false); handleCreatePaper(); }} className="flex-1" disabled={createPaper.isPending}>
               {createPaper.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
