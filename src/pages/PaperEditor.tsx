@@ -831,6 +831,215 @@ export default function PaperEditor() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Validation Modal */}
+      <AnimatePresence>
+        {showValidation && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-card rounded-2xl border border-border shadow-lg max-w-lg w-full max-h-[80vh] overflow-y-auto"
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}>
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-accent" /> Format Validation
+                </h3>
+                <button onClick={() => setShowValidation(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="p-5">
+                {isValidating ? (
+                  <div className="flex items-center justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-accent" /></div>
+                ) : validationResult ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-3xl font-bold text-foreground">{validationResult.score}%</div>
+                        <div className="text-sm text-muted-foreground">Format Score</div>
+                      </div>
+                      <div className="text-right text-sm text-muted-foreground">
+                        <div>{validationResult.totalWords.toLocaleString()} words</div>
+                        <div>~{validationResult.estimatedPages} pages</div>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div className={`h-full rounded-full transition-all ${validationResult.score >= 80 ? "bg-green-500" : validationResult.score >= 50 ? "bg-yellow-500" : "bg-red-500"}`}
+                        style={{ width: `${validationResult.score}%` }} />
+                    </div>
+                    <div className="space-y-2">
+                      {validationResult.issues.map((issue, i) => (
+                        <div key={i} className={`flex items-start gap-2 rounded-lg p-3 text-sm ${
+                          issue.type === "error" ? "bg-red-500/10 text-red-700" :
+                          issue.type === "warning" ? "bg-yellow-500/10 text-yellow-700" :
+                          "bg-blue-500/10 text-blue-700"
+                        }`}>
+                          <span className="shrink-0 mt-0.5">{issue.type === "error" ? "❌" : issue.type === "warning" ? "⚠️" : "ℹ️"}</span>
+                          {issue.message}
+                        </div>
+                      ))}
+                      {validationResult.issues.length === 0 && (
+                        <div className="text-center py-4 text-muted-foreground">✅ No issues found. Your paper looks great!</div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Plagiarism Modal */}
+      <AnimatePresence>
+        {showPlagiarism && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-card rounded-2xl border border-border shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}>
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-accent" /> Plagiarism & AI Detection
+                </h3>
+                <button onClick={() => setShowPlagiarism(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="p-5">
+                {isCheckingPlagiarism ? (
+                  <div className="flex flex-col items-center justify-center py-8 gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-accent" />
+                    <p className="text-sm text-muted-foreground">Analyzing your paper...</p>
+                  </div>
+                ) : plagiarismResult ? (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="rounded-xl border border-border p-4 text-center">
+                        <div className="text-2xl font-bold text-foreground">{plagiarismResult.originality_score}%</div>
+                        <div className="text-xs text-muted-foreground mt-1">Originality</div>
+                      </div>
+                      <div className="rounded-xl border border-border p-4 text-center">
+                        <div className="text-2xl font-bold text-foreground">{plagiarismResult.ai_detection_score}%</div>
+                        <div className="text-xs text-muted-foreground mt-1">AI Likelihood</div>
+                      </div>
+                      <div className="rounded-xl border border-border p-4 text-center">
+                        <div className={`text-2xl font-bold ${plagiarismResult.overall_risk === "low" ? "text-green-600" : plagiarismResult.overall_risk === "medium" ? "text-yellow-600" : "text-red-600"}`}>
+                          {plagiarismResult.overall_risk.toUpperCase()}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Risk Level</div>
+                      </div>
+                    </div>
+
+                    {plagiarismResult.sections.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-foreground text-sm mb-2">Section Analysis</h4>
+                        <div className="space-y-2">
+                          {plagiarismResult.sections.map((sec, i) => (
+                            <div key={i} className="rounded-lg border border-border p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-medium text-sm text-foreground">{sec.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Originality: {sec.originality}% | AI: {sec.ai_likelihood}%
+                                </span>
+                              </div>
+                              {sec.flags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {sec.flags.map((f, j) => (
+                                    <span key={j} className="text-xs bg-yellow-500/10 text-yellow-700 px-2 py-0.5 rounded">{f}</span>
+                                  ))}
+                                </div>
+                              )}
+                              {sec.suggestions.length > 0 && (
+                                <ul className="mt-2 space-y-1">
+                                  {sec.suggestions.map((s, j) => (
+                                    <li key={j} className="text-xs text-muted-foreground">• {s}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {plagiarismResult.recommendations.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-foreground text-sm mb-2">Recommendations</h4>
+                        <ul className="space-y-1">
+                          {plagiarismResult.recommendations.map((r, i) => (
+                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-accent mt-0.5">•</span> {r}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Google Scholar Modal */}
+      <AnimatePresence>
+        {showScholar && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-card rounded-2xl border border-border shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}>
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5 text-accent" /> Google Scholar Search
+                </h3>
+                <button onClick={() => { setShowScholar(false); setScholarResults([]); setScholarQuery(""); }} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="p-5">
+                <div className="flex gap-2 mb-4">
+                  <input
+                    className="flex-1 rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Search for papers, topics, or keywords..."
+                    value={scholarQuery}
+                    onChange={(e) => setScholarQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleScholarSearch(); }}
+                  />
+                  <Button variant="hero" onClick={handleScholarSearch} disabled={isSearchingScholar || !scholarQuery.trim()}>
+                    {isSearchingScholar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                {isSearchingScholar && (
+                  <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-accent" /></div>
+                )}
+
+                {scholarResults.length > 0 && (
+                  <div className="space-y-3">
+                    {scholarResults.map((ref, i) => (
+                      <div key={i} className="rounded-lg border border-border p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm text-foreground leading-snug">{ref.title}</h4>
+                            <p className="text-xs text-muted-foreground mt-1">{ref.authors} — {ref.year}</p>
+                            <p className="text-xs text-muted-foreground italic">{ref.venue}</p>
+                            {ref.abstract && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{ref.abstract}</p>}
+                            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                              {ref.citations > 0 && <span>📊 {ref.citations} citations</span>}
+                              {ref.relevance > 0 && <span>🎯 {ref.relevance}% relevant</span>}
+                            </div>
+                          </div>
+                          <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={() => addReferenceFromScholar(ref)}>
+                            + Add
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!isSearchingScholar && scholarResults.length === 0 && scholarQuery && (
+                  <div className="text-center py-8 text-sm text-muted-foreground">No results yet. Try searching for a topic.</div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
