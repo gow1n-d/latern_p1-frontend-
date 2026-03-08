@@ -507,42 +507,94 @@ export default function PaperEditor() {
     );
   }
 
-  // Journal picker
+  // Journal picker with search
   if (showJournalPicker) {
+    const searchLower = journalSearch.toLowerCase();
+    const filteredCategories = formatCategories.map((cat) => ({
+      ...cat,
+      formats: cat.formats.filter(
+        (f) =>
+          f.name.toLowerCase().includes(searchLower) ||
+          f.desc.toLowerCase().includes(searchLower) ||
+          f.id.toLowerCase().includes(searchLower)
+      ),
+    })).filter((cat) => cat.formats.length > 0);
+
+    const totalResults = filteredCategories.reduce((a, c) => a + c.formats.length, 0);
+
     return (
       <div className="min-h-screen bg-background overflow-y-auto p-4 sm:p-6">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-6 sm:mb-8 text-sm">
               <ChevronLeft className="h-4 w-4" /> Back to Dashboard
             </button>
-            <h1 className="font-display text-2xl sm:text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
-            <p className="text-muted-foreground text-base sm:text-lg mb-8 sm:mb-10">Select your target format to load the correct template.</p>
 
-            {formatCategories.map((cat) => (
-              <div key={cat.label} className="mb-6 sm:mb-8">
-                <h2 className="font-display text-base sm:text-lg font-semibold text-foreground mb-3">{cat.label}</h2>
-                <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {cat.formats.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => {
-                        setSelectedJournal(f.id);
-                        setSections(getSectionsForFormat(f.id));
-                        setShowJournalPicker(false);
-                        setShowMetaForm(true);
-                      }}
-                      className={`group rounded-xl border-2 p-5 text-left transition-all hover:shadow-card-hover ${
-                        selectedJournal === f.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
-                      }`}
-                    >
-                      <span className={`inline-block rounded-md border px-3 py-1 text-xs font-semibold ${f.color}`}>{f.name}</span>
-                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
-                    </button>
-                  ))}
+            <div className="mb-8 sm:mb-10">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-accent" />
                 </div>
+                <h1 className="font-display text-2xl sm:text-4xl font-bold text-foreground">Create New Paper</h1>
               </div>
-            ))}
+              <p className="text-muted-foreground text-base sm:text-lg ml-[52px]">Select your target journal or conference format.</p>
+            </div>
+
+            {/* Search bar */}
+            <div className="relative mb-8 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search journals, conferences, standards..."
+                value={journalSearch}
+                onChange={(e) => setJournalSearch(e.target.value)}
+                className="w-full rounded-xl border border-input bg-card pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+                autoFocus
+              />
+              {journalSearch && (
+                <button onClick={() => setJournalSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+              {journalSearch && (
+                <p className="text-xs text-muted-foreground mt-2">{totalResults} format{totalResults !== 1 ? "s" : ""} found</p>
+              )}
+            </div>
+
+            {filteredCategories.length === 0 ? (
+              <div className="text-center py-16">
+                <Search className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">No formats match "{journalSearch}"</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">Try a different keyword or browse all formats</p>
+                <Button variant="outline" size="sm" className="mt-4" onClick={() => setJournalSearch("")}>Clear Search</Button>
+              </div>
+            ) : (
+              filteredCategories.map((cat) => (
+                <div key={cat.label} className="mb-6 sm:mb-8">
+                  <h2 className="font-display text-sm sm:text-base font-semibold text-muted-foreground uppercase tracking-wider mb-3">{cat.label}</h2>
+                  <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {cat.formats.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          setSelectedJournal(f.id);
+                          setSections(getSectionsForFormat(f.id));
+                          setShowJournalPicker(false);
+                          setShowMetaForm(true);
+                          setJournalSearch("");
+                        }}
+                        className={`group rounded-xl border-2 p-4 sm:p-5 text-left transition-all hover:shadow-card-hover hover:scale-[1.01] ${
+                          selectedJournal === f.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
+                        }`}
+                      >
+                        <span className={`inline-block rounded-md border px-3 py-1 text-xs font-semibold ${f.color}`}>{f.name}</span>
+                        <p className="mt-2 text-xs text-muted-foreground leading-relaxed line-clamp-2">{f.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
           </motion.div>
         </div>
       </div>
