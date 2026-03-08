@@ -194,11 +194,12 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
         <h1 style={{
           fontFamily: "'Times New Roman', Times, serif",
           fontSize: config.titleSize,
-          fontWeight: 400,
-          textAlign: "center" as const,
-          lineHeight: 1.15,
+          fontWeight: 700,
+          textAlign: "center",
+          lineHeight: 1.18,
           margin: 0,
           marginBottom: 8,
+          letterSpacing: -0.2,
         }}>
           {titleSection?.content || "Untitled Paper"}
         </h1>
