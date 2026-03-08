@@ -1,0 +1,186 @@
+import type { PaperSection } from "@/hooks/usePapers";
+
+type FormatConfig = {
+  columns: 1 | 2;
+  titleSize: string;
+  bodySize: string;
+  headingStyle: "uppercase" | "numbered" | "bold";
+  fontFamily: string;
+  lineHeight: string;
+  pageWidth: string;
+  abstract?: "italic" | "normal";
+  sectionNumbering?: boolean;
+};
+
+const FORMAT_CONFIGS: Record<string, FormatConfig> = {
+  ieee: { columns: 2, titleSize: "text-[22px]", bodySize: "text-[9.5px]", headingStyle: "uppercase", fontFamily: "font-serif", lineHeight: "leading-[1.15]", pageWidth: "max-w-[680px]", abstract: "italic", sectionNumbering: true },
+  "ieee-conf": { columns: 2, titleSize: "text-[22px]", bodySize: "text-[9.5px]", headingStyle: "uppercase", fontFamily: "font-serif", lineHeight: "leading-[1.15]", pageWidth: "max-w-[680px]", abstract: "italic", sectionNumbering: true },
+  acm: { columns: 2, titleSize: "text-[20px]", bodySize: "text-[9px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.2]", pageWidth: "max-w-[680px]", sectionNumbering: true },
+  "acm-conf": { columns: 2, titleSize: "text-[20px]", bodySize: "text-[9px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.2]", pageWidth: "max-w-[680px]", sectionNumbering: true },
+  cvpr: { columns: 2, titleSize: "text-[22px]", bodySize: "text-[9.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.15]", pageWidth: "max-w-[680px]", sectionNumbering: true },
+  aaai: { columns: 2, titleSize: "text-[22px]", bodySize: "text-[9.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.15]", pageWidth: "max-w-[680px]", sectionNumbering: true },
+  acl: { columns: 2, titleSize: "text-[20px]", bodySize: "text-[9.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.2]", pageWidth: "max-w-[680px]", sectionNumbering: true },
+  springer: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[10.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.35]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  elsevier: { columns: 1, titleSize: "text-[22px]", bodySize: "text-[10.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  nature: { columns: 1, titleSize: "text-[24px]", bodySize: "text-[11px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]" },
+  science: { columns: 1, titleSize: "text-[22px]", bodySize: "text-[10.5px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.4]", pageWidth: "max-w-[520px]" },
+  neurips: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[10.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.35]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  icml: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[10.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.35]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  iclr: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[10.5px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.35]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  wiley: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[11px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]" },
+  "taylor-francis": { columns: 1, titleSize: "text-[20px]", bodySize: "text-[11px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  sage: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[11px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]" },
+  mdpi: { columns: 1, titleSize: "text-[18px]", bodySize: "text-[10.5px]", headingStyle: "numbered", fontFamily: "font-sans", lineHeight: "leading-[1.4]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  plos: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[10.5px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]" },
+  apa7: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[12px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[2]", pageWidth: "max-w-[520px]" },
+  chicago: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[12px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[2]", pageWidth: "max-w-[520px]" },
+  mla: { columns: 1, titleSize: "text-[14px]", bodySize: "text-[12px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[2]", pageWidth: "max-w-[520px]" },
+  harvard: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[12px]", headingStyle: "bold", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]" },
+  scopus: { columns: 1, titleSize: "text-[20px]", bodySize: "text-[11px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+  "web-of-science": { columns: 1, titleSize: "text-[20px]", bodySize: "text-[11px]", headingStyle: "numbered", fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]", sectionNumbering: true },
+};
+
+const DEFAULT_CONFIG: FormatConfig = {
+  columns: 1, titleSize: "text-[20px]", bodySize: "text-[11px]", headingStyle: "bold",
+  fontFamily: "font-serif", lineHeight: "leading-[1.5]", pageWidth: "max-w-[520px]",
+};
+
+const NON_BODY = ["title", "keywords", "references", "works-cited", "bibliography", "reference-list", "ccs-concepts", "highlights"];
+
+export default function PaperPreview({ sections, journal }: { sections: PaperSection[]; journal: string }) {
+  const config = FORMAT_CONFIGS[journal] || DEFAULT_CONFIG;
+  const titleSection = sections.find((s) => s.id === "title");
+  const abstractSection = sections.find((s) => s.id === "abstract");
+  const keywordsSection = sections.find((s) => s.id === "keywords");
+  const highlightsSection = sections.find((s) => s.id === "highlights");
+  const ccsSection = sections.find((s) => s.id === "ccs-concepts");
+  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.id !== "abstract" && s.content.trim());
+
+  let sectionCounter = 0;
+
+  const renderHeading = (label: string) => {
+    sectionCounter++;
+    switch (config.headingStyle) {
+      case "uppercase":
+        return <h3 className="font-bold text-[11px] tracking-wide mt-4 mb-1 uppercase">{config.sectionNumbering ? `${toRoman(sectionCounter)}. ` : ""}{label}</h3>;
+      case "numbered":
+        return <h3 className="font-bold text-[12px] mt-4 mb-1">{config.sectionNumbering ? `${sectionCounter}. ` : ""}{label}</h3>;
+      default:
+        return <h3 className="font-bold text-[12px] mt-4 mb-1">{label}</h3>;
+    }
+  };
+
+  const renderParagraphs = (content: string) =>
+    content.split("\n").filter(Boolean).map((p, i) => (
+      <p key={i} className={`${config.bodySize} ${config.lineHeight} text-justify mb-1 indent-4 first:indent-0`}>{p}</p>
+    ));
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-muted/40 py-8 px-4">
+      {/* Paper page */}
+      <div className={`mx-auto ${config.pageWidth} bg-white text-black shadow-xl ${config.fontFamily}`}
+        style={{ padding: "48px 52px", minHeight: "1100px" }}>
+
+        {/* Header / Title */}
+        <div className="text-center mb-4">
+          <h1 className={`${config.titleSize} font-bold ${config.lineHeight} mb-2`}>
+            {titleSection?.content || "Untitled Paper"}
+          </h1>
+          <p className="text-[10.5px] text-gray-600 mb-1">Author Name<sup>1</sup></p>
+          <p className="text-[8.5px] text-gray-500 italic">
+            <sup>1</sup>Department, University, City, Country
+          </p>
+        </div>
+
+        <hr className="border-gray-300 mb-3" />
+
+        {/* Abstract — always full-width even on two-column */}
+        {abstractSection?.content && (
+          <div className="mb-3">
+            <p className="font-bold text-[10px] tracking-wide uppercase mb-0.5">Abstract</p>
+            <p className={`${config.bodySize} ${config.lineHeight} text-justify ${config.abstract === "italic" ? "italic" : ""}`}>
+              {abstractSection.content}
+            </p>
+          </div>
+        )}
+
+        {/* Keywords / Index Terms */}
+        {keywordsSection?.content && (
+          <div className="mb-3">
+            <p className="text-[9.5px]">
+              <span className="font-bold italic">{journal.startsWith("ieee") ? "Index Terms" : "Keywords"}: </span>
+              <span className="italic">{keywordsSection.content}</span>
+            </p>
+          </div>
+        )}
+
+        {/* Highlights (Elsevier) */}
+        {highlightsSection?.content && (
+          <div className="mb-3 border border-gray-200 p-3 bg-gray-50 rounded">
+            <p className="font-bold text-[10px] mb-1">Highlights</p>
+            {highlightsSection.content.split("\n").filter(Boolean).map((h, i) => (
+              <p key={i} className="text-[9.5px] leading-[1.3]">• {h.replace(/^[•\-]\s*/, "")}</p>
+            ))}
+          </div>
+        )}
+
+        {/* CCS Concepts (ACM) */}
+        {ccsSection?.content && (
+          <div className="mb-3">
+            <p className="font-bold text-[10px] mb-0.5">CCS Concepts</p>
+            <p className="text-[9.5px] italic">{ccsSection.content}</p>
+          </div>
+        )}
+
+        <hr className="border-gray-200 mb-2" />
+
+        {/* Body — two-column or single-column */}
+        {config.columns === 2 ? (
+          <div className="columns-2 gap-5" style={{ columnRule: "0.5px solid #e5e7eb" }}>
+            {bodySections.map((s) => (
+              <div key={s.id} className="break-inside-avoid mb-2">
+                {renderHeading(s.label)}
+                {renderParagraphs(s.content)}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div>
+            {bodySections.map((s) => (
+              <div key={s.id} className="mb-2">
+                {renderHeading(s.label)}
+                {renderParagraphs(s.content)}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* References */}
+        {(() => {
+          const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
+          if (!refSection?.content.trim()) return null;
+          return (
+            <div className="mt-4">
+              <h3 className="font-bold text-[11px] tracking-wide uppercase mb-1">{refSection.label}</h3>
+              {refSection.content.split("\n").filter(Boolean).map((r, i) => (
+                <p key={i} className="text-[8.5px] leading-[1.3] mb-0.5 pl-3 -indent-3">[{i + 1}] {r.replace(/^\[\d+\]\s*/, "")}</p>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Footer */}
+        <div className="mt-8 pt-2 border-t border-gray-200 text-center">
+          <p className="text-[7px] text-gray-400">Generated by PaperForge</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function toRoman(n: number): string {
+  const map: [number, string][] = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  let result = "";
+  for (const [val, sym] of map) { while (n >= val) { result += sym; n -= val; } }
+  return result;
+}

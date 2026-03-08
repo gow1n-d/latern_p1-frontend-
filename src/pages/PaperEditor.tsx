@@ -4,13 +4,14 @@ import {
   BookOpen, ChevronLeft, Save, Download, Sparkles, Check,
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
-  Copy, RotateCcw
+  Copy, RotateCcw, Eye, Edit3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
+import PaperPreview from "@/components/PaperPreview";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -98,6 +99,7 @@ export default function PaperEditor() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [paperId, setPaperId] = useState<string | null>(isNew ? null : id || null);
   const [wordCount, setWordCount] = useState(0);
+  const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
 
@@ -530,6 +532,22 @@ export default function PaperEditor() {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-border bg-muted p-0.5">
+              <button
+                onClick={() => setViewMode("edit")}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "edit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Edit3 className="h-3 w-3" /> Edit
+              </button>
+              <button
+                onClick={() => setViewMode("preview")}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "preview" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Eye className="h-3 w-3" /> Paper View
+              </button>
+            </div>
+            <div className="h-5 w-px bg-border" />
             {/* Save status */}
             <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">
               {isSaving ? (
@@ -572,35 +590,39 @@ export default function PaperEditor() {
           </div>
         </div>
 
-        {/* Editor */}
+        {/* Editor / Preview */}
         <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto py-10 px-8">
-              <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
-                  {isBusy && (
-                    <span className="flex items-center gap-2 text-sm text-accent">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {isGenerating ? "AI is writing..." : "Improving..."}
-                    </span>
-                  )}
-                </div>
-                <textarea
-                  className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
-                  placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
-                  value={currentSection?.content || ""}
-                  onChange={(e) => updateContent(e.target.value)}
-                  disabled={isBusy}
-                />
-                {currentSection?.content && (
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {currentSection.content.trim().split(/\s+/).filter(Boolean).length} words
+          {viewMode === "preview" ? (
+            <PaperPreview sections={sections} journal={selectedJournal} />
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto py-10 px-8">
+                <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
+                    {isBusy && (
+                      <span className="flex items-center gap-2 text-sm text-accent">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {isGenerating ? "AI is writing..." : "Improving..."}
+                      </span>
+                    )}
                   </div>
-                )}
-              </motion.div>
+                  <textarea
+                    className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
+                    placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
+                    value={currentSection?.content || ""}
+                    onChange={(e) => updateContent(e.target.value)}
+                    disabled={isBusy}
+                  />
+                  {currentSection?.content && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {currentSection.content.trim().split(/\s+/).filter(Boolean).length} words
+                    </div>
+                  )}
+                </motion.div>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* AI Panel */}
           <AnimatePresence>
