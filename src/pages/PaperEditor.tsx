@@ -162,6 +162,7 @@ export default function PaperEditor() {
   });
   const [isFixingValidation, setIsFixingValidation] = useState(false);
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
+  const [showAuthorModal, setShowAuthorModal] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -827,6 +828,9 @@ export default function PaperEditor() {
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowScholar(true)}>
             <GraduationCap className="h-4 w-4" /> Google Scholar
           </Button>
+          <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowAuthorModal(true)}>
+            <User className="h-4 w-4" /> Author Details
+          </Button>
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-muted-foreground">Theme</span>
             <ThemeToggle />
@@ -1227,6 +1231,65 @@ export default function PaperEditor() {
                 {!isSearchingScholar && scholarResults.length === 0 && scholarQuery && (
                   <div className="text-center py-8 text-sm text-muted-foreground">No results yet. Try searching for a topic.</div>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Author Details Modal */}
+      <AnimatePresence>
+        {showAuthorModal && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="bg-card rounded-2xl border border-border shadow-lg max-w-lg w-full"
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}>
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
+                  <User className="h-5 w-5 text-accent" /> Author Details
+                </h3>
+                <button onClick={() => setShowAuthorModal(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                {(() => {
+                  const cls = "w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Author Name *</label>
+                        <input className={cls} placeholder="e.g., John Doe" value={authorDetails.authorName}
+                          onChange={(e) => setAuthorDetails(p => ({ ...p, authorName: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Co-Author(s)</label>
+                        <input className={cls} placeholder="e.g., Jane Smith" value={authorDetails.coAuthorName}
+                          onChange={(e) => setAuthorDetails(p => ({ ...p, coAuthorName: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Department</label>
+                        <input className={cls} placeholder="e.g., Dept. of Computer Science" value={authorDetails.department}
+                          onChange={(e) => setAuthorDetails(p => ({ ...p, department: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Institution</label>
+                        <input className={cls} placeholder="e.g., MIT" value={authorDetails.institution}
+                          onChange={(e) => setAuthorDetails(p => ({ ...p, institution: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">City, Country</label>
+                        <input className={cls} placeholder="e.g., Cambridge, USA" value={authorDetails.city}
+                          onChange={(e) => setAuthorDetails(p => ({ ...p, city: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+                        <input className={cls} placeholder="e.g., author@uni.edu" type="email" value={authorDetails.email}
+                          onChange={(e) => setAuthorDetails(p => ({ ...p, email: e.target.value }))} />
+                      </div>
+                    </div>
+                  );
+                })()}
+                <Button variant="hero" className="w-full mt-4" onClick={() => setShowAuthorModal(false)}>
+                  Save Author Details
+                </Button>
               </div>
             </motion.div>
           </motion.div>
