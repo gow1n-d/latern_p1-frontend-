@@ -597,7 +597,7 @@ export default function PaperEditor() {
   }
 
   const canGenerate = !NON_GENERATABLE.includes(activeSection);
-  const isBusy = isGenerating || isAssisting || isCompletingAll;
+  const isBusy = isGenerating || isAssisting || isCompletingAll || isHumanizing;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
