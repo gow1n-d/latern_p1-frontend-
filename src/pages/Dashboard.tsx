@@ -5,6 +5,7 @@ import {
   Trash2, Loader2, LogOut, User, Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate } from "react-router-dom";
 import { usePapers, useDeletePaper } from "@/hooks/usePapers";
 import { useAuth } from "@/hooks/useAuth";

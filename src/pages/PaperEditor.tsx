@@ -4,9 +4,11 @@ import {
   BookOpen, ChevronLeft, Save, Download, Sparkles, Check,
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
-  Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap
+  Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
+  Moon, Sun, Wand2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, type ValidationResult, type PlagiarismResult, type ScholarResult } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
@@ -155,6 +157,11 @@ export default function PaperEditor() {
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
   const [journalSearch, setJournalSearch] = useState("");
+  const [authorDetails, setAuthorDetails] = useState({
+    authorName: "", coAuthorName: "", department: "", institution: "", city: "", country: "", email: "",
+  });
+  const [isFixingValidation, setIsFixingValidation] = useState(false);
+  const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -499,6 +506,67 @@ export default function PaperEditor() {
     toast.success("Reference added!");
   };
 
+  // AI Fix for validation issues
+  const handleAiFixValidation = useCallback(async () => {
+    if (!validationResult || validationResult.issues.length === 0) return;
+    setIsFixingValidation(true);
+    const issueDescriptions = validationResult.issues.map(i => i.message).join("; ");
+    // Fix each section that has content
+    for (const sec of sections.filter(s => s.content.trim() && !NON_GENERATABLE.includes(s.id))) {
+      setActiveSection(sec.id);
+      let accumulated = "";
+      await aiAssist(
+        {
+          instruction: `Fix these format/structure issues in this section: ${issueDescriptions}. Maintain the academic content but fix formatting, length, and structural problems.`,
+          content: sec.content,
+          journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+        },
+        {
+          onDelta: (text) => {
+            accumulated += text;
+            const current = accumulated;
+            setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+          },
+          onDone: () => {},
+          onError: (err) => toast.error(err),
+        }
+      );
+    }
+    setIsFixingValidation(false);
+    setShowValidation(false);
+    toast.success("Format issues resolved by AI!");
+    setSections((prev) => { autoSave(prev); return prev; });
+  }, [validationResult, sections, selectedJournal, autoSave]);
+
+  // AI Fix for plagiarism issues
+  const handleAiFixPlagiarism = useCallback(async () => {
+    if (!plagiarismResult) return;
+    setIsFixingPlagiarism(true);
+    const flaggedSections = plagiarismResult.sections.filter(s => s.ai_likelihood > 40 || s.originality < 70);
+    for (const flagged of flaggedSections) {
+      const sec = sections.find(s => s.label === flagged.name);
+      if (!sec || !sec.content.trim()) continue;
+      setActiveSection(sec.id);
+      let accumulated = "";
+      await humanizeText(
+        { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
+        {
+          onDelta: (text) => {
+            accumulated += text;
+            const current = accumulated;
+            setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+          },
+          onDone: () => {},
+          onError: (err) => toast.error(err),
+        }
+      );
+    }
+    setIsFixingPlagiarism(false);
+    setShowPlagiarism(false);
+    toast.success("Plagiarism/AI-detection issues resolved!");
+    setSections((prev) => { autoSave(prev); return prev; });
+  }, [plagiarismResult, sections, selectedJournal, autoSave]);
+
   if (loadingPaper && !isNew) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -603,16 +671,23 @@ export default function PaperEditor() {
 
   // Meta form
   if (showMetaForm) {
+    const inputClass = "w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <motion.div className="max-w-xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="font-display text-3xl font-bold text-foreground mb-2">Paper Details</h1>
-          <p className="text-muted-foreground mb-8">Provide context so AI can generate better content.</p>
-          <div className="space-y-4">
+        <motion.div className="max-w-2xl w-full" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-accent" />
+            </div>
+            <h1 className="font-display text-3xl font-bold text-foreground">Paper Details</h1>
+          </div>
+          <p className="text-muted-foreground mb-8 ml-[52px]">Provide context so AI can generate better content.</p>
+
+          {/* Paper info */}
+          <div className="space-y-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Paper Title *</label>
-              <input
-                className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              <input className={inputClass}
                 placeholder="e.g., Deep Learning for Medical Image Segmentation"
                 value={sections.find((s) => s.id === "title")?.content || ""}
                 onChange={(e) => setSections((prev) => prev.map((s) => s.id === "title" ? { ...s, content: e.target.value } : s))}
@@ -620,24 +695,72 @@ export default function PaperEditor() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Research Domain</label>
-              <input className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              <input className={inputClass}
                 placeholder="e.g., Computer Vision, NLP, Cybersecurity" value={paperMeta.domain}
                 onChange={(e) => setPaperMeta((p) => ({ ...p, domain: e.target.value }))} />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Methodology Summary</label>
-              <textarea className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
-                placeholder="Briefly describe your approach" value={paperMeta.methodology}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Key Results</label>
-              <textarea className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none h-20"
-                placeholder="Summarize your main findings" value={paperMeta.results_summary}
-                onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Methodology Summary</label>
+                <textarea className={`${inputClass} resize-none h-20`}
+                  placeholder="Briefly describe your approach" value={paperMeta.methodology}
+                  onChange={(e) => setPaperMeta((p) => ({ ...p, methodology: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Key Results</label>
+                <textarea className={`${inputClass} resize-none h-20`}
+                  placeholder="Summarize your main findings" value={paperMeta.results_summary}
+                  onChange={(e) => setPaperMeta((p) => ({ ...p, results_summary: e.target.value }))} />
+              </div>
             </div>
           </div>
-          <div className="mt-8 flex gap-3">
+
+          {/* Author details */}
+          <div className="border-t border-border pt-6 mb-6">
+            <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <User className="h-4 w-4 text-accent" /> Author Details
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Author Name *</label>
+                <input className={inputClass} placeholder="e.g., John Doe"
+                  value={authorDetails.authorName}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, authorName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Co-Author(s)</label>
+                <input className={inputClass} placeholder="e.g., Jane Smith, Bob Lee"
+                  value={authorDetails.coAuthorName}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, coAuthorName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Department</label>
+                <input className={inputClass} placeholder="e.g., Department of Computer Science"
+                  value={authorDetails.department}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, department: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Institution</label>
+                <input className={inputClass} placeholder="e.g., MIT, Stanford University"
+                  value={authorDetails.institution}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, institution: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">City, Country</label>
+                <input className={inputClass} placeholder="e.g., Cambridge, USA"
+                  value={authorDetails.city}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, city: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Correspondence Email</label>
+                <input className={inputClass} placeholder="e.g., author@university.edu" type="email"
+                  value={authorDetails.email}
+                  onChange={(e) => setAuthorDetails(p => ({ ...p, email: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
             <Button variant="outline" onClick={() => { setShowMetaForm(false); handleCreatePaper(); }}>Skip</Button>
             <Button variant="hero" onClick={() => { setShowMetaForm(false); handleCreatePaper(); }} className="flex-1" disabled={createPaper.isPending}>
               {createPaper.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -704,6 +827,10 @@ export default function PaperEditor() {
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowScholar(true)}>
             <GraduationCap className="h-4 w-4" /> Google Scholar
           </Button>
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-muted-foreground">Theme</span>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
@@ -820,7 +947,7 @@ export default function PaperEditor() {
           {/* Preview pane — shown in preview and split modes */}
           {(viewMode === "preview" || viewMode === "split") && (
             <div className={viewMode === "split" ? "w-1/2 overflow-y-auto" : "flex-1"}>
-              <PaperPreview sections={sections} journal={selectedJournal} />
+              <PaperPreview sections={sections} journal={selectedJournal} authorDetails={authorDetails} />
             </div>
           )}
 
@@ -932,6 +1059,12 @@ export default function PaperEditor() {
                         <div className="text-center py-4 text-muted-foreground">✅ No issues found. Your paper looks great!</div>
                       )}
                     </div>
+                    {validationResult.issues.length > 0 && (
+                      <Button variant="hero" className="w-full gap-2 mt-4" onClick={handleAiFixValidation} disabled={isFixingValidation}>
+                        {isFixingValidation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                        {isFixingValidation ? "AI is fixing issues..." : "AI Fix All Issues"}
+                      </Button>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -1021,6 +1154,12 @@ export default function PaperEditor() {
                           ))}
                         </ul>
                       </div>
+                    )}
+                    {(plagiarismResult.ai_detection_score > 40 || plagiarismResult.originality_score < 70) && (
+                      <Button variant="hero" className="w-full gap-2 mt-2" onClick={handleAiFixPlagiarism} disabled={isFixingPlagiarism}>
+                        {isFixingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                        {isFixingPlagiarism ? "AI is humanizing flagged sections..." : "AI Fix Flagged Sections"}
+                      </Button>
                     )}
                   </div>
                 ) : null}

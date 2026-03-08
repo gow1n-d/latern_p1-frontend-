@@ -1,6 +1,15 @@
 import { useRef, useEffect, useState } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
 
+type AuthorDetails = {
+  authorName: string;
+  coAuthorName: string;
+  department: string;
+  institution: string;
+  city: string;
+  email: string;
+};
+
 type FormatConfig = {
   columns: 1 | 2;
   titleSize: string;
@@ -83,11 +92,15 @@ const DEFAULT_CONFIG: FormatConfig = {
 
 const NON_BODY = ["title", "keywords", "references", "works-cited", "bibliography", "reference-list", "ccs-concepts", "highlights"];
 
-// US Letter page height in px at ~96dpi scaled for preview (11in * 96dpi ≈ 1056px)
-// We use a content height accounting for top/bottom padding (48px each)
-const PAGE_CONTENT_HEIGHT = 960; // 1056 - 96 padding
+const PAGE_CONTENT_HEIGHT = 960;
 
-export default function PaperPreview({ sections, journal }: { sections: PaperSection[]; journal: string }) {
+type Props = {
+  sections: PaperSection[];
+  journal: string;
+  authorDetails?: AuthorDetails;
+};
+
+export default function PaperPreview({ sections, journal, authorDetails }: Props) {
   const config = FORMAT_CONFIGS[journal] || DEFAULT_CONFIG;
   const contentRef = useRef<HTMLDivElement>(null);
   const [pageCount, setPageCount] = useState(1);
@@ -101,13 +114,19 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
 
   let sectionCounter = 0;
 
-  // Calculate page count after render
   useEffect(() => {
     if (contentRef.current) {
       const totalHeight = contentRef.current.scrollHeight;
       setPageCount(Math.max(1, Math.ceil(totalHeight / PAGE_CONTENT_HEIGHT)));
     }
   }, [sections, journal]);
+
+  const authorName = authorDetails?.authorName || "Author Name";
+  const coAuthor = authorDetails?.coAuthorName || "";
+  const dept = authorDetails?.department || "Department of Computer Science";
+  const inst = authorDetails?.institution || "University Name";
+  const cityCountry = authorDetails?.city || "City, Country";
+  const email = authorDetails?.email || "author@university.edu";
 
   const renderHeading = (label: string) => {
     sectionCounter++;
@@ -123,32 +142,30 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
 
   const renderParagraphs = (content: string) =>
     content.split("\n").filter(Boolean).map((p, i) => (
-      <p key={i} className={`${config.bodySize} ${config.lineHeight} text-justify mb-1 indent-4 first:indent-0`}>{p}</p>
+      <p key={i} className={`${config.bodySize} ${config.lineHeight} text-justify mb-1.5 indent-4 first:indent-0`}>{p}</p>
     ));
 
   return (
     <div className="flex-1 overflow-y-auto bg-muted/40 py-8 px-4">
       <div className={`mx-auto ${config.pageWidth} ${config.fontFamily} relative`}>
-        {/* Continuous content rendered inside paged container */}
         <div className="relative">
-          {/* Page backgrounds + borders + page numbers */}
           {Array.from({ length: pageCount }).map((_, i) => (
             <div key={`page-${i}`}>
-              {/* The page "sheet" */}
               <div
                 className="bg-white shadow-xl relative"
                 style={{
-                  height: `${PAGE_CONTENT_HEIGHT + 96}px`, // content + padding
+                  height: `${PAGE_CONTENT_HEIGHT + 96}px`,
                   marginBottom: i < pageCount - 1 ? 0 : undefined,
                 }}
               >
-                {/* Page number */}
+                {/* Header line on first page */}
+                {i === 0 && (
+                  <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-gray-800 via-gray-600 to-gray-800" />
+                )}
                 <div className="absolute bottom-3 left-0 right-0 text-center">
                   <span className="text-[8px] text-gray-400">{i + 1}</span>
                 </div>
               </div>
-
-              {/* Page break indicator between pages */}
               {i < pageCount - 1 && (
                 <div className="relative flex items-center justify-center py-2 my-0">
                   <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed border-accent/40" />
@@ -160,25 +177,36 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
             </div>
           ))}
 
-          {/* Content overlay — flows naturally over page backgrounds */}
           <div
             ref={contentRef}
             className="absolute top-0 left-0 right-0 text-black"
             style={{ padding: "48px 52px" }}
           >
-            {/* Header / Title */}
+            {/* Professional Header / Title */}
             <div className="text-center mb-5">
               <h1 className={`${config.titleSize} font-bold ${config.lineHeight} mb-3 tracking-tight`}>
                 {titleSection?.content || "Untitled Paper"}
               </h1>
-              <p className="text-[10.5px] text-gray-700 mb-0.5 font-medium">Author Name<sup>1</sup>, Co-Author Name<sup>2</sup></p>
-              <p className="text-[8.5px] text-gray-500 italic leading-relaxed">
-                <sup>1</sup>Department of Computer Science, University Name, City, Country
+              <div className="space-y-0.5">
+                <p className="text-[10.5px] text-gray-700 font-medium">
+                  {authorName}<sup>1</sup>
+                  {coAuthor && <>, {coAuthor}<sup>2</sup></>}
+                </p>
+                <p className="text-[8.5px] text-gray-500 italic leading-relaxed">
+                  <sup>1</sup>{dept}, {inst}, {cityCountry}
+                </p>
+                {coAuthor && (
+                  <p className="text-[8.5px] text-gray-500 italic leading-relaxed">
+                    <sup>2</sup>Research Laboratory, Institution Name, City, Country
+                  </p>
+                )}
+                <p className="text-[8px] text-gray-400 mt-1">Correspondence: {email}</p>
+              </div>
+              {/* Received/Accepted dates line */}
+              <p className="text-[7.5px] text-gray-400 mt-2 tracking-wide">
+                Received: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                {" · "}Accepted: —{" · "}Published: —
               </p>
-              <p className="text-[8.5px] text-gray-500 italic leading-relaxed">
-                <sup>2</sup>Research Laboratory, Institution Name, City, Country
-              </p>
-              <p className="text-[8px] text-gray-400 mt-1">Correspondence: author@university.edu</p>
             </div>
 
             <hr className="border-gray-300 mb-3" />
@@ -236,7 +264,7 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
             ) : (
               <div>
                 {bodySections.map((s) => (
-                  <div key={s.id} className="mb-2">
+                  <div key={s.id} className="mb-3">
                     {renderHeading(s.label)}
                     {renderParagraphs(s.content)}
                   </div>
