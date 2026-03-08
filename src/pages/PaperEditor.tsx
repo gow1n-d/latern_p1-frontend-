@@ -4,9 +4,11 @@ import {
   BookOpen, ChevronLeft, Save, Download, Sparkles, Check,
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
-  Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap
+  Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
+  Moon, Sun, Wand2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, type ValidationResult, type PlagiarismResult, type ScholarResult } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
