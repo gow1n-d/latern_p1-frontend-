@@ -1059,6 +1059,12 @@ export default function PaperEditor() {
                         <div className="text-center py-4 text-muted-foreground">✅ No issues found. Your paper looks great!</div>
                       )}
                     </div>
+                    {validationResult.issues.length > 0 && (
+                      <Button variant="hero" className="w-full gap-2 mt-4" onClick={handleAiFixValidation} disabled={isFixingValidation}>
+                        {isFixingValidation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                        {isFixingValidation ? "AI is fixing issues..." : "AI Fix All Issues"}
+                      </Button>
+                    )}
                   </div>
                 ) : null}
               </div>
