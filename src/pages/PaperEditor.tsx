@@ -532,6 +532,22 @@ export default function PaperEditor() {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-border bg-muted p-0.5">
+              <button
+                onClick={() => setViewMode("edit")}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "edit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Edit3 className="h-3 w-3" /> Edit
+              </button>
+              <button
+                onClick={() => setViewMode("preview")}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "preview" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Eye className="h-3 w-3" /> Paper View
+              </button>
+            </div>
+            <div className="h-5 w-px bg-border" />
             {/* Save status */}
             <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">
               {isSaving ? (
