@@ -645,6 +645,7 @@ const FORMAT_SECTIONS: Record<string, PaperSection[]> = {
     { id: "limitations", label: "Limitations", content: "" },
     { id: "references", label: "References", content: "" },
   ],
+};
 
 export function getSectionsForFormat(formatId: string): PaperSection[] {
   return (FORMAT_SECTIONS[formatId] || DEFAULT_SECTIONS).map(s => ({ ...s }));
