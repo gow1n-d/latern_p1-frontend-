@@ -721,19 +721,28 @@ export default function PaperEditor() {
             <h2 className="font-display text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
               <User className="h-4 w-4 text-accent" /> Author Details
             </h2>
+            <div className="space-y-3 mb-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-foreground">Authors ({authorDetails.authorNames.length})</label>
+                <Button variant="outline" size="sm" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: [...p.authorNames, ""] }))}>+ Add Author</Button>
+              </div>
+              {authorDetails.authorNames.map((name, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <span className="text-xs text-muted-foreground w-5">{i + 1}.</span>
+                  <input className={inputClass} placeholder={i === 0 ? "e.g., John Doe (primary author)" : `Author ${i + 1}`}
+                    value={name}
+                    onChange={(e) => setAuthorDetails(p => {
+                      const updated = [...p.authorNames];
+                      updated[i] = e.target.value;
+                      return { ...p, authorNames: updated };
+                    })} />
+                  {authorDetails.authorNames.length > 1 && (
+                    <button className="text-muted-foreground hover:text-destructive text-xs" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: p.authorNames.filter((_, j) => j !== i) }))}>✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Author Name *</label>
-                <input className={inputClass} placeholder="e.g., John Doe"
-                  value={authorDetails.authorName}
-                  onChange={(e) => setAuthorDetails(p => ({ ...p, authorName: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Co-Author(s)</label>
-                <input className={inputClass} placeholder="e.g., Jane Smith, Bob Lee"
-                  value={authorDetails.coAuthorName}
-                  onChange={(e) => setAuthorDetails(p => ({ ...p, coAuthorName: e.target.value }))} />
-              </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Department</label>
                 <input className={inputClass} placeholder="e.g., Department of Computer Science"
