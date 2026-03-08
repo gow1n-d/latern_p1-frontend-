@@ -103,7 +103,7 @@ export function useCreatePaper() {
 export function useUpdatePaper() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { id: string; updates: Partial<Pick<Paper, "title" | "journal" | "status" | "domain" | "methodology_summary" | "results_summary" | "sections">>) => {
+    mutationFn: async (params: { id: string; updates: Partial<Pick<Paper, "title" | "journal" | "status" | "domain" | "methodology_summary" | "results_summary" | "sections">> }) => {
       const updateData: Record<string, unknown> = { ...params.updates };
       if (params.updates.sections) {
         updateData.sections = params.updates.sections as unknown as Json;
