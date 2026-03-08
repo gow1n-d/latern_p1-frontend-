@@ -99,6 +99,7 @@ export default function PaperEditor() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [paperId, setPaperId] = useState<string | null>(isNew ? null : id || null);
   const [wordCount, setWordCount] = useState(0);
+  const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
 
