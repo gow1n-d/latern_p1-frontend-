@@ -1261,8 +1261,8 @@ export default function PaperEditor() {
               <div className="p-5 space-y-4">
                 {(() => {
                   const cls = "w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
-                  return (
-                    <div className="space-y-3 mb-4 col-span-full">
+                    return (
+                    <>
                       <div className="flex items-center justify-between">
                         <label className="block text-sm font-medium text-foreground">Authors ({authorDetails.authorNames.length})</label>
                         <Button variant="outline" size="sm" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: [...p.authorNames, ""] }))}>+ Add Author</Button>
