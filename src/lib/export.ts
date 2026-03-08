@@ -383,14 +383,20 @@ function renderTwoColumn(
     if (y + needed > bottomLimit) nextCol();
   };
 
-  for (const item of items) {
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
     if (item.type === "gap") {
-      y += item.h;
+      // Don't add gap if it would push us near bottom with nothing after
+      if (y + item.h < bottomLimit) {
+        y += item.h;
+      }
       continue;
     }
 
     if (item.type === "heading") {
-      checkCol(headLhVal + lh);
+      // Keep heading + at least 2 lines of following body together
+      const followBodyH = lh * 2;
+      checkCol(headLhVal + 0.5 + followBodyH);
       doc.setFontSize(config.headingSize);
       doc.setFont("times", "bold");
       doc.text(item.text, getX(), y);
@@ -402,6 +408,10 @@ function renderTwoColumn(
     doc.setFontSize(config.bodySize);
     doc.setFont("times", "normal");
     const lines = doc.splitTextToSize(item.text, colW);
+    // Keep at least first 2 lines of a paragraph together
+    if (lines.length >= 2) {
+      checkCol(lh * 2);
+    }
     for (const line of lines) {
       checkCol(lh);
       doc.text(line, getX(), y);
