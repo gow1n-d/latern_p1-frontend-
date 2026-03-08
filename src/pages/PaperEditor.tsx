@@ -347,6 +347,13 @@ export default function PaperEditor() {
     toast.success("Text exported!");
   };
 
+  const handleExportWord = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToWord(sections, title);
+    setShowExportMenu(false);
+    toast.success("Word document exported!");
+  };
+
   const copySection = () => {
     if (currentSection?.content) {
       navigator.clipboard.writeText(currentSection.content);
