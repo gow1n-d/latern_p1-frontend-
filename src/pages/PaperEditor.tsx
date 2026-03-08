@@ -61,7 +61,7 @@ const journalOptions = formatCategories.flatMap((cat) =>
   cat.formats.map((f) => ({ id: f.id, name: f.name, color: f.color }))
 );
 
-const AI_GENERATABLE = ["abstract", "keywords", "introduction", "literature", "methodology", "results", "discussion", "conclusion"];
+const NON_GENERATABLE = ["title", "references", "works-cited", "bibliography", "reference-list"];
 
 const quickActions = [
   "Improve writing style",
