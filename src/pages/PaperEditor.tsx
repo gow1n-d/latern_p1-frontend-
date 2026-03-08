@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist } from "@/lib/ai";
-import { exportToPDF, exportToText, exportToLaTeX } from "@/lib/export";
+import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -347,6 +347,13 @@ export default function PaperEditor() {
     toast.success("Text exported!");
   };
 
+  const handleExportWord = () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    exportToWord(sections, title);
+    setShowExportMenu(false);
+    toast.success("Word document exported!");
+  };
+
   const copySection = () => {
     if (currentSection?.content) {
       navigator.clipboard.writeText(currentSection.content);
@@ -558,6 +565,7 @@ export default function PaperEditor() {
                   <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
                   <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
                   <button onClick={handleExportText} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
+                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word (.doc)</button>
                 </div>
               )}
             </div>
