@@ -218,6 +218,68 @@ export default function PaperEditor() {
     );
   }, [activeSection, sections, selectedJournal, paperMeta, currentSection, autoSave]);
 
+  const handleCompleteEntirePaper = useCallback(async () => {
+    const titleContent = sections.find((s) => s.id === "title")?.content || "";
+    if (!titleContent.trim()) { toast.error("Please add a paper title first"); return; }
+
+    setIsCompletingAll(true);
+    const generatableSections = sections.filter((s) => !NON_GENERATABLE.includes(s.id) && !s.content.trim());
+
+    if (generatableSections.length === 0) {
+      toast.info("All sections already have content!");
+      setIsCompletingAll(false);
+      return;
+    }
+
+    toast.info(`Generating ${generatableSections.length} empty sections...`);
+    let latestSections = [...sections];
+
+    for (const sec of generatableSections) {
+      setCompletingSection(sec.id);
+      setActiveSection(sec.id);
+      let accumulated = "";
+
+      await new Promise<void>((resolve) => {
+        generateSection(
+          {
+            section: sec.id,
+            title: titleContent,
+            domain: paperMeta.domain,
+            methodology: paperMeta.methodology,
+            results_summary: paperMeta.results_summary,
+            journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+            existing_content: latestSections
+              .filter((s) => s.content.trim() && s.id !== sec.id)
+              .map((s) => `${s.label}: ${s.content.slice(0, 500)}`)
+              .join("\n"),
+          },
+          {
+            onDelta: (text) => {
+              accumulated += text;
+              const current = accumulated;
+              setSections((prev) => prev.map((s) => (s.id === sec.id ? { ...s, content: current } : s)));
+            },
+            onDone: () => {
+              toast.success(`${sec.label} generated!`);
+              latestSections = latestSections.map((s) => (s.id === sec.id ? { ...s, content: accumulated } : s));
+              setSections(latestSections);
+              resolve();
+            },
+            onError: (err) => {
+              toast.error(`Failed: ${sec.label} — ${err}`);
+              resolve();
+            },
+          }
+        );
+      });
+    }
+
+    setCompletingSection(null);
+    setIsCompletingAll(false);
+    toast.success("Paper completed! 🎉");
+    setSections((prev) => { autoSave(prev); return prev; });
+  }, [sections, selectedJournal, paperMeta, autoSave]);
+
   const handleAiAssist = useCallback(async (instruction: string) => {
     const content = currentSection?.content || "";
     if (!content.trim()) { toast.error("No content to improve. Write or generate content first."); return; }
