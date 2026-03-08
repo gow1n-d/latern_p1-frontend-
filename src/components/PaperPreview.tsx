@@ -214,7 +214,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
               margin: 0,
               fontStyle: "italic" as const,
             }}>
-              {authorName}{coAuthor ? `, ${coAuthor}` : ""}
+              {names.join(", ")}
             </p>
             {(dept || inst || city) && (
               <p style={{
