@@ -428,9 +428,18 @@ export default function PaperEditor() {
             <Button variant="outline" size="sm" className="gap-2" onClick={handleManualSave} disabled={isSaving || !paperId}>
               <Save className="h-4 w-4" /> Save
             </Button>
-            <Button variant="hero" size="sm" className="gap-2" onClick={handleExport}>
-              <Download className="h-4 w-4" /> Export
-            </Button>
+            <div className="relative">
+              <Button variant="hero" size="sm" className="gap-2" onClick={() => setShowExportMenu(!showExportMenu)}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
+                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
+                  <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
+                  <button onClick={handleExportText} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
