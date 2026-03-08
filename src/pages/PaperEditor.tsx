@@ -947,7 +947,7 @@ export default function PaperEditor() {
           {/* Preview pane — shown in preview and split modes */}
           {(viewMode === "preview" || viewMode === "split") && (
             <div className={viewMode === "split" ? "w-1/2 overflow-y-auto" : "flex-1"}>
-              <PaperPreview sections={sections} journal={selectedJournal} />
+              <PaperPreview sections={sections} journal={selectedJournal} authorDetails={authorDetails} />
             </div>
           )}
 
