@@ -84,3 +84,102 @@ export async function aiAssist(
   });
   await parseSSEStream(resp, opts);
 }
+
+export async function humanizeText(
+  params: { content: string; journal: string },
+  opts: StreamOptions
+) {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/humanize-text`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify(params),
+  });
+  await parseSSEStream(resp, opts);
+}
+
+export type ValidationResult = {
+  success: boolean;
+  score: number;
+  totalWords: number;
+  estimatedPages: number;
+  issues: { type: "error" | "warning" | "info"; message: string }[];
+};
+
+export async function validateFormat(
+  params: { sections: any[]; journal: string }
+): Promise<ValidationResult> {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/validate-format`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    try { const j = JSON.parse(text); throw new Error(j.error); } catch (e) { if (e instanceof Error) throw e; throw new Error("Validation failed"); }
+  }
+  return resp.json();
+}
+
+export type PlagiarismResult = {
+  success: boolean;
+  originality_score: number;
+  ai_detection_score: number;
+  overall_risk: string;
+  sections: { name: string; originality: number; ai_likelihood: number; flags: string[]; suggestions: string[] }[];
+  common_phrases: string[];
+  recommendations: string[];
+};
+
+export async function checkPlagiarism(
+  params: { sections: any[]; journal: string }
+): Promise<PlagiarismResult> {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/check-plagiarism`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    try { const j = JSON.parse(text); throw new Error(j.error); } catch (e) { if (e instanceof Error) throw e; throw new Error("Plagiarism check failed"); }
+  }
+  return resp.json();
+}
+
+export type ScholarResult = {
+  title: string;
+  authors: string;
+  year: number;
+  venue: string;
+  doi: string;
+  abstract: string;
+  citations: number;
+  relevance: number;
+  [key: string]: any;
+};
+
+export async function searchScholar(
+  params: { query: string; journal: string; paperTitle?: string }
+): Promise<{ success: boolean; results: ScholarResult[] }> {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/scholar-search`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    try { const j = JSON.parse(text); throw new Error(j.error); } catch (e) { if (e instanceof Error) throw e; throw new Error("Scholar search failed"); }
+  }
+  return resp.json();
+}
