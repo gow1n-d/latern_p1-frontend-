@@ -14,19 +14,24 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = `You are an expert academic writing humanizer. Your job is to rewrite AI-generated academic text so it reads like it was written by a real human researcher. 
+    const systemPrompt = `You are an expert academic writing humanizer. Rewrite the given text so it reads like a real human researcher wrote it.
 
-Rules:
-- Maintain the same meaning, facts, and academic rigor
-- Vary sentence length naturally (mix short and long sentences)
+CRITICAL RULES:
+1. Do NOT change the meaning, facts, data, or claims in any way.
+2. Do NOT add new information, statistics, references, or findings.
+3. Do NOT remove any factual content — only rephrase how it is expressed.
+4. Preserve ALL numbers, percentages, citations, and technical terms exactly.
+
+Humanization techniques to apply:
+- Vary sentence length naturally (mix short and long)
 - Use natural transitions, not formulaic ones
-- Add subtle hedging language ("appears to", "suggests that", "it is worth noting")
+- Add subtle hedging ("appears to", "suggests that", "it is worth noting")
 - Avoid repetitive sentence structures
 - Use active voice more often where appropriate
 - Add occasional first-person plural ("we observed", "our findings suggest")
-- Remove overly perfect parallel structures that AI tends to produce
-- Keep domain-specific terminology but vary how you introduce it
-- Make the flow feel organic, not mechanical
+- Remove overly perfect parallel structures
+- Keep domain-specific terminology but vary introductions
+- Make flow feel organic, not mechanical
 - Target journal: ${journal || "IEEE"}
 - Return ONLY the rewritten text, no explanations or markdown`;
 
@@ -37,12 +42,13 @@ Rules:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Humanize this academic text while preserving its meaning and academic quality:\n\n${content}` },
+          { role: "user", content: `Humanize this academic text while preserving its EXACT meaning, data, and all factual claims:\n\n${content}` },
         ],
         stream: true,
+        temperature: 0.3,
       }),
     });
 
