@@ -337,7 +337,8 @@ export function useCreatePaper() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: { title: string; journal: string; domain?: string; methodology_summary?: string; results_summary?: string }) => {
-      const sections = DEFAULT_SECTIONS.map((s) =>
+      const formatSections = getSectionsForFormat(params.journal || "");
+      const sections = formatSections.map((s) =>
         s.id === "title" ? { ...s, content: params.title } : s
       );
       const { data, error } = await supabase
