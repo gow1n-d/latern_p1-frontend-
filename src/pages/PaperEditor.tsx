@@ -1259,54 +1259,52 @@ export default function PaperEditor() {
                 <button onClick={() => setShowAuthorModal(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
               </div>
               <div className="p-5 space-y-4">
-                {(() => {
-                  const cls = "w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-foreground">Authors ({authorDetails.authorNames.length})</label>
+                    <Button variant="outline" size="sm" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: [...p.authorNames, ""] }))}>+ Add Author</Button>
+                  </div>
+                  {authorDetails.authorNames.map((name, i) => {
+                    const cls = "w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
                     return (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <label className="block text-sm font-medium text-foreground">Authors ({authorDetails.authorNames.length})</label>
-                        <Button variant="outline" size="sm" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: [...p.authorNames, ""] }))}>+ Add Author</Button>
+                      <div key={i} className="flex gap-2 items-center">
+                        <span className="text-xs text-muted-foreground w-5">{i + 1}.</span>
+                        <input className={cls} placeholder={i === 0 ? "e.g., John Doe" : `Author ${i + 1}`}
+                          value={name}
+                          onChange={(e) => setAuthorDetails(p => {
+                            const updated = [...p.authorNames];
+                            updated[i] = e.target.value;
+                            return { ...p, authorNames: updated };
+                          })} />
+                        {authorDetails.authorNames.length > 1 && (
+                          <button className="text-muted-foreground hover:text-destructive text-xs" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: p.authorNames.filter((_, j) => j !== i) }))}>✕</button>
+                        )}
                       </div>
-                      {authorDetails.authorNames.map((name, i) => (
-                        <div key={i} className="flex gap-2 items-center">
-                          <span className="text-xs text-muted-foreground w-5">{i + 1}.</span>
-                          <input className={cls} placeholder={i === 0 ? "e.g., John Doe" : `Author ${i + 1}`}
-                            value={name}
-                            onChange={(e) => setAuthorDetails(p => {
-                              const updated = [...p.authorNames];
-                              updated[i] = e.target.value;
-                              return { ...p, authorNames: updated };
-                            })} />
-                          {authorDetails.authorNames.length > 1 && (
-                            <button className="text-muted-foreground hover:text-destructive text-xs" onClick={() => setAuthorDetails(p => ({ ...p, authorNames: p.authorNames.filter((_, j) => j !== i) }))}>✕</button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Department</label>
-                        <input className={cls} placeholder="e.g., Dept. of Computer Science" value={authorDetails.department}
-                          onChange={(e) => setAuthorDetails(p => ({ ...p, department: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Institution</label>
-                        <input className={cls} placeholder="e.g., MIT" value={authorDetails.institution}
-                          onChange={(e) => setAuthorDetails(p => ({ ...p, institution: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">City, Country</label>
-                        <input className={cls} placeholder="e.g., Cambridge, USA" value={authorDetails.city}
-                          onChange={(e) => setAuthorDetails(p => ({ ...p, city: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Email</label>
-                        <input className={cls} placeholder="e.g., author@uni.edu" type="email" value={authorDetails.email}
-                          onChange={(e) => setAuthorDetails(p => ({ ...p, email: e.target.value }))} />
-                      </div>
-                    </div>
-                    </>);
-                })()}
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Department</label>
+                    <input className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g., Dept. of Computer Science" value={authorDetails.department}
+                      onChange={(e) => setAuthorDetails(p => ({ ...p, department: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Institution</label>
+                    <input className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g., MIT" value={authorDetails.institution}
+                      onChange={(e) => setAuthorDetails(p => ({ ...p, institution: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">City, Country</label>
+                    <input className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g., Cambridge, USA" value={authorDetails.city}
+                      onChange={(e) => setAuthorDetails(p => ({ ...p, city: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+                    <input className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g., author@uni.edu" type="email" value={authorDetails.email}
+                      onChange={(e) => setAuthorDetails(p => ({ ...p, email: e.target.value }))} />
+                  </div>
+                </div>
                 <Button variant="hero" className="w-full mt-4" onClick={() => setShowAuthorModal(false)}>
                   Save Author Details
                 </Button>
