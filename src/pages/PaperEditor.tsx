@@ -415,6 +415,89 @@ export default function PaperEditor() {
     }
   };
 
+  // Humanize text
+  const handleHumanize = useCallback(async () => {
+    const content = currentSection?.content || "";
+    if (!content.trim()) { toast.error("No content to humanize. Write or generate content first."); return; }
+    setIsHumanizing(true);
+    let accumulated = "";
+    await humanizeText(
+      { content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
+      {
+        onDelta: (text) => {
+          accumulated += text;
+          const current = accumulated;
+          setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: current } : s)));
+        },
+        onDone: () => {
+          setIsHumanizing(false);
+          toast.success("Content humanized!");
+          setSections((prev) => { autoSave(prev); return prev; });
+        },
+        onError: (err) => { setIsHumanizing(false); toast.error(err); },
+      }
+    );
+  }, [activeSection, currentSection, selectedJournal, autoSave]);
+
+  // Validate format
+  const handleValidateFormat = async () => {
+    setIsValidating(true);
+    setShowValidation(true);
+    setValidationResult(null);
+    try {
+      const result = await validateFormat({ sections, journal: selectedJournal });
+      setValidationResult(result);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Validation failed");
+      setShowValidation(false);
+    }
+    setIsValidating(false);
+  };
+
+  // Plagiarism check
+  const handleCheckPlagiarism = async () => {
+    const hasContent = sections.some(s => s.content.trim() && !["title", "keywords"].includes(s.id));
+    if (!hasContent) { toast.error("Write some content first before checking plagiarism."); return; }
+    setIsCheckingPlagiarism(true);
+    setShowPlagiarism(true);
+    setPlagiarismResult(null);
+    try {
+      const result = await checkPlagiarism({ sections, journal: selectedJournal });
+      setPlagiarismResult(result);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Plagiarism check failed");
+      setShowPlagiarism(false);
+    }
+    setIsCheckingPlagiarism(false);
+  };
+
+  // Google Scholar search
+  const handleScholarSearch = async () => {
+    if (!scholarQuery.trim()) return;
+    setIsSearchingScholar(true);
+    try {
+      const title = sections.find(s => s.id === "title")?.content;
+      const result = await searchScholar({ query: scholarQuery, journal: selectedJournal, paperTitle: title });
+      setScholarResults(result.results || []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scholar search failed");
+    }
+    setIsSearchingScholar(false);
+  };
+
+  const addReferenceFromScholar = (ref: ScholarResult) => {
+    const formattedKey = Object.keys(ref).find(k => k.startsWith("formatted_"));
+    const formatted = formattedKey ? ref[formattedKey] : `${ref.authors}, "${ref.title}," ${ref.venue}, ${ref.year}.`;
+    const refSectionId = sections.find(s => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id))?.id;
+    if (!refSectionId) { toast.error("No references section found"); return; }
+    setSections(prev => {
+      const updated = prev.map(s => s.id === refSectionId ? { ...s, content: s.content ? s.content + "\n" + formatted : formatted } : s);
+      autoSave(updated);
+      return updated;
+    });
+    toast.success("Reference added!");
+  };
+
   if (loadingPaper && !isNew) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
