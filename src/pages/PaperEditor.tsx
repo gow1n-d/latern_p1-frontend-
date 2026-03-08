@@ -590,35 +590,39 @@ export default function PaperEditor() {
           </div>
         </div>
 
-        {/* Editor */}
+        {/* Editor / Preview */}
         <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto py-10 px-8">
-              <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
-                  {isBusy && (
-                    <span className="flex items-center gap-2 text-sm text-accent">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {isGenerating ? "AI is writing..." : "Improving..."}
-                    </span>
-                  )}
-                </div>
-                <textarea
-                  className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
-                  placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
-                  value={currentSection?.content || ""}
-                  onChange={(e) => updateContent(e.target.value)}
-                  disabled={isBusy}
-                />
-                {currentSection?.content && (
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {currentSection.content.trim().split(/\s+/).filter(Boolean).length} words
+          {viewMode === "preview" ? (
+            <PaperPreview sections={sections} journal={selectedJournal} />
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto py-10 px-8">
+                <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
+                    {isBusy && (
+                      <span className="flex items-center gap-2 text-sm text-accent">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {isGenerating ? "AI is writing..." : "Improving..."}
+                      </span>
+                    )}
                   </div>
-                )}
-              </motion.div>
+                  <textarea
+                    className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
+                    placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
+                    value={currentSection?.content || ""}
+                    onChange={(e) => updateContent(e.target.value)}
+                    disabled={isBusy}
+                  />
+                  {currentSection?.content && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {currentSection.content.trim().split(/\s+/).filter(Boolean).length} words
+                    </div>
+                  )}
+                </motion.div>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* AI Panel */}
           <AnimatePresence>
