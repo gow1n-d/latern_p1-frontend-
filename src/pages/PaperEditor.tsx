@@ -506,6 +506,67 @@ export default function PaperEditor() {
     toast.success("Reference added!");
   };
 
+  // AI Fix for validation issues
+  const handleAiFixValidation = useCallback(async () => {
+    if (!validationResult || validationResult.issues.length === 0) return;
+    setIsFixingValidation(true);
+    const issueDescriptions = validationResult.issues.map(i => i.message).join("; ");
+    // Fix each section that has content
+    for (const sec of sections.filter(s => s.content.trim() && !NON_GENERATABLE.includes(s.id))) {
+      setActiveSection(sec.id);
+      let accumulated = "";
+      await aiAssist(
+        {
+          instruction: `Fix these format/structure issues in this section: ${issueDescriptions}. Maintain the academic content but fix formatting, length, and structural problems.`,
+          content: sec.content,
+          journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+        },
+        {
+          onDelta: (text) => {
+            accumulated += text;
+            const current = accumulated;
+            setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+          },
+          onDone: () => {},
+          onError: (err) => toast.error(err),
+        }
+      );
+    }
+    setIsFixingValidation(false);
+    setShowValidation(false);
+    toast.success("Format issues resolved by AI!");
+    setSections((prev) => { autoSave(prev); return prev; });
+  }, [validationResult, sections, selectedJournal, autoSave]);
+
+  // AI Fix for plagiarism issues
+  const handleAiFixPlagiarism = useCallback(async () => {
+    if (!plagiarismResult) return;
+    setIsFixingPlagiarism(true);
+    const flaggedSections = plagiarismResult.sections.filter(s => s.ai_likelihood > 40 || s.originality < 70);
+    for (const flagged of flaggedSections) {
+      const sec = sections.find(s => s.label === flagged.name);
+      if (!sec || !sec.content.trim()) continue;
+      setActiveSection(sec.id);
+      let accumulated = "";
+      await humanizeText(
+        { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
+        {
+          onDelta: (text) => {
+            accumulated += text;
+            const current = accumulated;
+            setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+          },
+          onDone: () => {},
+          onError: (err) => toast.error(err),
+        }
+      );
+    }
+    setIsFixingPlagiarism(false);
+    setShowPlagiarism(false);
+    toast.success("Plagiarism/AI-detection issues resolved!");
+    setSections((prev) => { autoSave(prev); return prev; });
+  }, [plagiarismResult, sections, selectedJournal, autoSave]);
+
   if (loadingPaper && !isNew) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
