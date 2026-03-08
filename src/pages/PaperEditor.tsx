@@ -162,6 +162,7 @@ export default function PaperEditor() {
   });
   const [isFixingValidation, setIsFixingValidation] = useState(false);
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
+  const [showAuthorModal, setShowAuthorModal] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
