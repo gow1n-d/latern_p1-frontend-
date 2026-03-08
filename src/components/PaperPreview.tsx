@@ -167,14 +167,18 @@ export default function PaperPreview({ sections, journal }: { sections: PaperSec
             style={{ padding: "48px 52px" }}
           >
             {/* Header / Title */}
-            <div className="text-center mb-4">
-              <h1 className={`${config.titleSize} font-bold ${config.lineHeight} mb-2`}>
+            <div className="text-center mb-5">
+              <h1 className={`${config.titleSize} font-bold ${config.lineHeight} mb-3 tracking-tight`}>
                 {titleSection?.content || "Untitled Paper"}
               </h1>
-              <p className="text-[10.5px] text-gray-600 mb-1">Author Name<sup>1</sup></p>
-              <p className="text-[8.5px] text-gray-500 italic">
-                <sup>1</sup>Department, University, City, Country
+              <p className="text-[10.5px] text-gray-700 mb-0.5 font-medium">Author Name<sup>1</sup>, Co-Author Name<sup>2</sup></p>
+              <p className="text-[8.5px] text-gray-500 italic leading-relaxed">
+                <sup>1</sup>Department of Computer Science, University Name, City, Country
               </p>
+              <p className="text-[8.5px] text-gray-500 italic leading-relaxed">
+                <sup>2</sup>Research Laboratory, Institution Name, City, Country
+              </p>
+              <p className="text-[8px] text-gray-400 mt-1">Correspondence: author@university.edu</p>
             </div>
 
             <hr className="border-gray-300 mb-3" />
