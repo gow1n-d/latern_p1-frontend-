@@ -1155,6 +1155,12 @@ export default function PaperEditor() {
                         </ul>
                       </div>
                     )}
+                    {(plagiarismResult.ai_detection_score > 40 || plagiarismResult.originality_score < 70) && (
+                      <Button variant="hero" className="w-full gap-2 mt-2" onClick={handleAiFixPlagiarism} disabled={isFixingPlagiarism}>
+                        {isFixingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                        {isFixingPlagiarism ? "AI is humanizing flagged sections..." : "AI Fix Flagged Sections"}
+                      </Button>
+                    )}
                   </div>
                 ) : null}
               </div>
