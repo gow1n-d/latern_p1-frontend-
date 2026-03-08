@@ -511,44 +511,130 @@ export default function PaperEditor() {
   const handleAiFixValidation = useCallback(async () => {
     if (!validationResult || validationResult.issues.length === 0) return;
     setIsFixingValidation(true);
-    const issueDescriptions = validationResult.issues.map(i => i.message).join("; ");
-    // Fix each section that has content
-    for (const sec of sections.filter(s => s.content.trim() && !NON_GENERATABLE.includes(s.id))) {
-      setActiveSection(sec.id);
-      let accumulated = "";
-      await aiAssist(
-        {
-          instruction: `Fix these format/structure issues in this section: ${issueDescriptions}. Maintain the academic content but fix formatting, length, and structural problems.`,
-          content: sec.content,
-          journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
-        },
-        {
-          onDelta: (text) => {
-            accumulated += text;
-            const current = accumulated;
-            setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+
+    // Group issues by type for targeted fixing
+    const errorIssues = validationResult.issues.filter(i => i.type === "error");
+    const warningIssues = validationResult.issues.filter(i => i.type === "warning");
+    const allIssues = [...errorIssues, ...warningIssues];
+    const issueDescriptions = allIssues.map(i => i.message).join("; ");
+
+    // Handle missing section errors by generating content for empty required sections
+    const missingSections = errorIssues
+      .filter(i => i.message.toLowerCase().includes("missing"))
+      .map(i => {
+        const match = i.message.match(/missing (?:required|essential) section:\s*(.+)/i);
+        return match ? match[1].trim().toLowerCase().replace(/\s+/g, "-") : null;
+      })
+      .filter(Boolean);
+
+    const titleContent = sections.find(s => s.id === "title")?.content || "";
+
+    // Generate missing sections first
+    for (const missingId of missingSections) {
+      const sec = sections.find(s => s.id === missingId || s.id.includes(missingId as string));
+      if (sec && !sec.content.trim()) {
+        let accumulated = "";
+        await generateSection(
+          {
+            section: sec.id,
+            title: titleContent,
+            domain: paperMeta.domain,
+            methodology: paperMeta.methodology,
+            results_summary: paperMeta.results_summary,
+            journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+            existing_content: sections.filter(s => s.content.trim() && s.id !== sec.id).map(s => `${s.label}: ${s.content.slice(0, 500)}`).join("\n"),
           },
-          onDone: () => {},
-          onError: (err) => toast.error(err),
-        }
-      );
+          {
+            onDelta: (text) => {
+              accumulated += text;
+              const current = accumulated;
+              setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+            },
+            onDone: () => {},
+            onError: (err) => toast.error(err),
+          }
+        );
+      }
     }
+
+    // Fix existing sections with content issues (length, structure warnings)
+    if (warningIssues.length > 0) {
+      for (const sec of sections.filter(s => s.content.trim() && !NON_GENERATABLE.includes(s.id))) {
+        // Check if this section is relevant to any warning
+        const relevantWarnings = warningIssues.filter(w =>
+          w.message.toLowerCase().includes(sec.label.toLowerCase()) ||
+          w.message.toLowerCase().includes(sec.id.toLowerCase()) ||
+          w.message.toLowerCase().includes("abstract") && sec.id === "abstract" ||
+          w.message.toLowerCase().includes("keyword") && sec.id === "keywords" ||
+          w.message.toLowerCase().includes("title") && sec.id === "title" ||
+          w.message.toLowerCase().includes("reference") && sec.id === "references" ||
+          w.message.toLowerCase().includes("short") && sec.id !== "title"
+        );
+        if (relevantWarnings.length === 0) continue;
+
+        setActiveSection(sec.id);
+        let accumulated = "";
+        const specificIssues = relevantWarnings.map(w => w.message).join("; ");
+        await aiAssist(
+          {
+            instruction: `Fix ONLY these specific issues in this section: ${specificIssues}. Do NOT change content that doesn't relate to these issues. Preserve all facts and data exactly.`,
+            content: sec.content,
+            journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
+          },
+          {
+            onDelta: (text) => {
+              accumulated += text;
+              const current = accumulated;
+              setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
+            },
+            onDone: () => {},
+            onError: (err) => toast.error(err),
+          }
+        );
+      }
+    }
+
+    // Auto-rescan after fixing
+    toast.info("Re-validating format...");
+    try {
+      const latestSections = sections.map(s => {
+        const el = document.querySelector(`[data-section-id="${s.id}"]`);
+        return el ? s : s;
+      });
+      setSections(prev => {
+        const result = validateFormat({ sections: prev, journal: selectedJournal });
+        result.then(res => {
+          setValidationResult(res);
+          if (res.issues.filter(i => i.type === "error" || i.type === "warning").length === 0) {
+            toast.success("All format issues resolved! ✅");
+          } else {
+            toast.success("Format improved! Some minor issues remain.");
+          }
+        }).catch(() => {});
+        return prev;
+      });
+    } catch {}
+
     setIsFixingValidation(false);
-    setShowValidation(false);
-    toast.success("Format issues resolved by AI!");
     setSections((prev) => { autoSave(prev); return prev; });
-  }, [validationResult, sections, selectedJournal, autoSave]);
+  }, [validationResult, sections, selectedJournal, autoSave, paperMeta]);
 
   // AI Fix for plagiarism issues
   const handleAiFixPlagiarism = useCallback(async () => {
     if (!plagiarismResult) return;
     setIsFixingPlagiarism(true);
     const flaggedSections = plagiarismResult.sections.filter(s => s.ai_likelihood > 40 || s.originality < 70);
+
     for (const flagged of flaggedSections) {
       const sec = sections.find(s => s.label === flagged.name);
       if (!sec || !sec.content.trim()) continue;
       setActiveSection(sec.id);
       let accumulated = "";
+
+      // Use specific flags and suggestions from the plagiarism result for targeted fixing
+      const specificFlags = flagged.flags.join("; ");
+      const specificSuggestions = flagged.suggestions.join("; ");
+
       await humanizeText(
         { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
         {
@@ -562,9 +648,25 @@ export default function PaperEditor() {
         }
       );
     }
+
+    // Auto-rescan after fixing
+    toast.info("Re-checking plagiarism & AI detection...");
+    try {
+      setSections(prev => {
+        const result = checkPlagiarism({ sections: prev, journal: selectedJournal });
+        result.then(res => {
+          setPlagiarismResult(res);
+          if (res.originality_score >= 70 && res.ai_detection_score <= 40) {
+            toast.success("All plagiarism/AI issues resolved! ✅");
+          } else {
+            toast.success("Content improved! Run again for further refinement.");
+          }
+        }).catch(() => {});
+        return prev;
+      });
+    } catch {}
+
     setIsFixingPlagiarism(false);
-    setShowPlagiarism(false);
-    toast.success("Plagiarism/AI-detection issues resolved!");
     setSections((prev) => { autoSave(prev); return prev; });
   }, [plagiarismResult, sections, selectedJournal, autoSave]);
 
