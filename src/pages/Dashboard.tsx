@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
-  BookOpen, Plus, FileText, Clock, MoreVertical, Search, Filter, Sparkles,
-  Trash2, Loader2, LogOut
+  BookOpen, Plus, FileText, Clock, MoreVertical, Search, Sparkles,
+  Trash2, Loader2, LogOut, User, Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
