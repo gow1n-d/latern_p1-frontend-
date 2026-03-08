@@ -30,6 +30,30 @@ const formatCategories = [
       { id: "plos", name: "PLOS ONE", color: "bg-yellow-500/10 text-yellow-700 border-yellow-200", desc: "PLOS ONE open-access — single-column, Vancouver citations" },
       { id: "nature", name: "Nature", color: "bg-red-500/10 text-red-700 border-red-200", desc: "Nature journals — concise format, numbered references" },
       { id: "science", name: "Science (AAAS)", color: "bg-indigo-500/10 text-indigo-700 border-indigo-200", desc: "Science magazine — brief reports, numbered citations" },
+      { id: "frontiers", name: "Frontiers", color: "bg-sky-500/10 text-sky-700 border-sky-200", desc: "Frontiers open-access — single-column, structured format" },
+      { id: "bmc", name: "BMC", color: "bg-green-500/10 text-green-700 border-green-200", desc: "BioMed Central — open-access, IMRAD format" },
+      { id: "hindawi", name: "Hindawi", color: "bg-purple-500/10 text-purple-700 border-purple-200", desc: "Hindawi open-access — single-column, numbered refs" },
+      { id: "oxford-academic", name: "Oxford Academic", color: "bg-stone-500/10 text-stone-700 border-stone-200", desc: "Oxford University Press journals — structured format" },
+      { id: "cambridge-up", name: "Cambridge UP", color: "bg-slate-500/10 text-slate-700 border-slate-200", desc: "Cambridge University Press — scholarly standard" },
+      { id: "royal-society", name: "Royal Society", color: "bg-blue-500/10 text-blue-700 border-blue-200", desc: "Royal Society Publishing — UK science journals" },
+      { id: "de-gruyter", name: "De Gruyter", color: "bg-rose-500/10 text-rose-700 border-rose-200", desc: "De Gruyter — European academic publishing" },
+      { id: "emerald-insight", name: "Emerald Insight", color: "bg-emerald-500/10 text-emerald-700 border-emerald-200", desc: "Emerald — business, management, social sciences" },
+      { id: "world-scientific", name: "World Scientific", color: "bg-amber-500/10 text-amber-700 border-amber-200", desc: "World Scientific — double-column, Asian academic publisher" },
+      { id: "ios-press", name: "IOS Press", color: "bg-cyan-500/10 text-cyan-700 border-cyan-200", desc: "IOS Press — European scholarly publisher" },
+    ],
+  },
+  {
+    label: "Medical & Life Sciences",
+    formats: [
+      { id: "lancet", name: "The Lancet", color: "bg-red-500/10 text-red-700 border-red-200", desc: "The Lancet — leading medical journal, structured abstract" },
+      { id: "bmj", name: "BMJ", color: "bg-blue-500/10 text-blue-700 border-blue-200", desc: "British Medical Journal — IMRAD format" },
+      { id: "jama", name: "JAMA", color: "bg-indigo-500/10 text-indigo-700 border-indigo-200", desc: "Journal of the American Medical Association — double-column" },
+      { id: "nejm", name: "NEJM", color: "bg-emerald-500/10 text-emerald-700 border-emerald-200", desc: "New England Journal of Medicine — concise format" },
+      { id: "cell", name: "Cell", color: "bg-violet-500/10 text-violet-700 border-violet-200", desc: "Cell Press — life sciences, STAR Methods" },
+      { id: "pnas", name: "PNAS", color: "bg-orange-500/10 text-orange-700 border-orange-200", desc: "Proceedings of the National Academy of Sciences — double-column" },
+      { id: "lippincott", name: "Lippincott", color: "bg-teal-500/10 text-teal-700 border-teal-200", desc: "Lippincott Williams & Wilkins — medical publisher" },
+      { id: "karger", name: "Karger", color: "bg-pink-500/10 text-pink-700 border-pink-200", desc: "Karger — biomedical publisher, structured sections" },
+      { id: "thieme-medical", name: "Thieme Medical", color: "bg-yellow-500/10 text-yellow-700 border-yellow-200", desc: "Thieme — medical and science publisher" },
     ],
   },
   {
@@ -43,10 +67,21 @@ const formatCategories = [
       { id: "aaai", name: "AAAI", color: "bg-orange-500/10 text-orange-700 border-orange-200", desc: "AAAI conference proceedings — double-column, 7 pages" },
       { id: "iclr", name: "ICLR", color: "bg-emerald-500/10 text-emerald-700 border-emerald-200", desc: "ICLR submissions — single-column, OpenReview format" },
       { id: "acl", name: "ACL/EMNLP", color: "bg-rose-500/10 text-rose-700 border-rose-200", desc: "ACL Anthology format — double-column, 8 pages + refs" },
+      { id: "interspeech", name: "Interspeech", color: "bg-cyan-500/10 text-cyan-700 border-cyan-200", desc: "Interspeech — double-column, speech/audio research" },
+      { id: "icassp", name: "ICASSP", color: "bg-blue-500/10 text-blue-700 border-blue-200", desc: "IEEE ICASSP — signal processing, double-column" },
+      { id: "miccai", name: "MICCAI", color: "bg-teal-500/10 text-teal-700 border-teal-200", desc: "MICCAI — medical image computing, LNCS format" },
+      { id: "eccv", name: "ECCV", color: "bg-amber-500/10 text-amber-700 border-amber-200", desc: "ECCV — computer vision, double-column" },
+      { id: "sigmod", name: "SIGMOD", color: "bg-violet-500/10 text-violet-700 border-violet-200", desc: "ACM SIGMOD — databases, double-column" },
+      { id: "vldb", name: "VLDB", color: "bg-indigo-500/10 text-indigo-700 border-indigo-200", desc: "VLDB — very large databases, double-column" },
+      { id: "www", name: "WWW/WebConf", color: "bg-pink-500/10 text-pink-700 border-pink-200", desc: "The Web Conference — double-column" },
+      { id: "kdd", name: "KDD", color: "bg-orange-500/10 text-orange-700 border-orange-200", desc: "ACM KDD — data mining, double-column" },
+      { id: "ijcai", name: "IJCAI", color: "bg-red-500/10 text-red-700 border-red-200", desc: "IJCAI — artificial intelligence, double-column" },
+      { id: "coling", name: "COLING", color: "bg-emerald-500/10 text-emerald-700 border-emerald-200", desc: "COLING — computational linguistics, double-column" },
+      { id: "naacl", name: "NAACL", color: "bg-sky-500/10 text-sky-700 border-sky-200", desc: "NAACL — NLP, ACL Anthology format" },
     ],
   },
   {
-    label: "Indexing & Standards",
+    label: "Indexing & Citation Standards",
     formats: [
       { id: "scopus", name: "Scopus", color: "bg-rose-500/10 text-rose-700 border-rose-200", desc: "Scopus-indexed journal standard format" },
       { id: "web-of-science", name: "Web of Science", color: "bg-slate-500/10 text-slate-700 border-slate-200", desc: "WoS-indexed journal standard format" },
@@ -54,6 +89,8 @@ const formatCategories = [
       { id: "chicago", name: "Chicago/Turabian", color: "bg-stone-500/10 text-stone-700 border-stone-200", desc: "Chicago Manual of Style — humanities, history" },
       { id: "mla", name: "MLA", color: "bg-purple-500/10 text-purple-700 border-purple-200", desc: "MLA format — literature, arts, humanities" },
       { id: "harvard", name: "Harvard", color: "bg-red-500/10 text-red-700 border-red-200", desc: "Harvard referencing — widely used in UK/Australia" },
+      { id: "vancouver", name: "Vancouver", color: "bg-teal-500/10 text-teal-700 border-teal-200", desc: "Vancouver style — biomedical, numbered references" },
+      { id: "turabian", name: "Turabian", color: "bg-amber-500/10 text-amber-700 border-amber-200", desc: "Turabian — student research papers, thesis format" },
     ],
   },
 ];
@@ -351,7 +388,7 @@ export default function PaperEditor() {
 
   const handleExportWord = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToWord(sections, title);
+    exportToWord(sections, selectedJournal, title);
     setShowExportMenu(false);
     toast.success("Word document exported!");
   };
@@ -374,19 +411,19 @@ export default function PaperEditor() {
   // Journal picker
   if (showJournalPicker) {
     return (
-      <div className="min-h-screen bg-background overflow-y-auto p-6">
-        <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen bg-background overflow-y-auto p-4 sm:p-6">
+        <div className="max-w-5xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-8 text-sm">
+            <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-6 sm:mb-8 text-sm">
               <ChevronLeft className="h-4 w-4" /> Back to Dashboard
             </button>
-            <h1 className="font-display text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
-            <p className="text-muted-foreground text-lg mb-10">Select your target format to load the correct template.</p>
+            <h1 className="font-display text-2xl sm:text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
+            <p className="text-muted-foreground text-base sm:text-lg mb-8 sm:mb-10">Select your target format to load the correct template.</p>
 
             {formatCategories.map((cat) => (
-              <div key={cat.label} className="mb-8">
-                <h2 className="font-display text-lg font-semibold text-foreground mb-3">{cat.label}</h2>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div key={cat.label} className="mb-6 sm:mb-8">
+                <h2 className="font-display text-base sm:text-lg font-semibold text-foreground mb-3">{cat.label}</h2>
+                <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {cat.formats.map((f) => (
                     <button
                       key={f.id}
@@ -466,8 +503,8 @@ export default function PaperEditor() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Left sidebar */}
-      <aside className="w-64 border-r border-border bg-card flex flex-col shrink-0">
+      {/* Left sidebar — hidden on mobile */}
+      <aside className="hidden md:flex w-64 border-r border-border bg-card flex-col shrink-0">
         <div className="p-4 border-b border-border">
           <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
             <ChevronLeft className="h-4 w-4" /> Dashboard
