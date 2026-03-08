@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
+import PaperPreview from "@/components/PaperPreview";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
