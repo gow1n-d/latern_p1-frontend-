@@ -200,7 +200,7 @@ function renderTwoColumn(
       if (currentY + 4 > pageHeight - margin) {
         if (currentCol === 0 && firstPage) {
           currentCol = 1;
-          currentY = y;
+          currentY = margin + 40;
         } else if (currentCol === 0) {
           currentCol = 1;
           currentY = margin;
