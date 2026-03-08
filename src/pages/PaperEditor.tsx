@@ -99,7 +99,7 @@ export default function PaperEditor() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [paperId, setPaperId] = useState<string | null>(isNew ? null : id || null);
   const [wordCount, setWordCount] = useState(0);
-  const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
+  const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
 
@@ -534,18 +534,17 @@ export default function PaperEditor() {
           <div className="flex items-center gap-2">
             {/* View mode toggle */}
             <div className="flex items-center rounded-lg border border-border bg-muted p-0.5">
-              <button
-                onClick={() => setViewMode("edit")}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "edit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Edit3 className="h-3 w-3" /> Edit
-              </button>
-              <button
-                onClick={() => setViewMode("preview")}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === "preview" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Eye className="h-3 w-3" /> Paper View
-              </button>
+              {(["edit", "split", "preview"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${viewMode === mode ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {mode === "edit" && <><Edit3 className="h-3 w-3" /> Edit</>}
+                  {mode === "split" && <><BookOpen className="h-3 w-3" /> Split</>}
+                  {mode === "preview" && <><Eye className="h-3 w-3" /> Paper View</>}
+                </button>
+              ))}
             </div>
             <div className="h-5 w-px bg-border" />
             {/* Save status */}
@@ -592,11 +591,10 @@ export default function PaperEditor() {
 
         {/* Editor / Preview */}
         <div className="flex-1 flex overflow-hidden">
-          {viewMode === "preview" ? (
-            <PaperPreview sections={sections} journal={selectedJournal} />
-          ) : (
-            <div className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto py-10 px-8">
+          {/* Editor pane — shown in edit and split modes */}
+          {(viewMode === "edit" || viewMode === "split") && (
+            <div className={`overflow-y-auto ${viewMode === "split" ? "w-1/2 border-r border-border" : "flex-1"}`}>
+              <div className={`mx-auto py-10 px-8 ${viewMode === "split" ? "max-w-none" : "max-w-3xl"}`}>
                 <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
@@ -621,6 +619,13 @@ export default function PaperEditor() {
                   )}
                 </motion.div>
               </div>
+            </div>
+          )}
+
+          {/* Preview pane — shown in preview and split modes */}
+          {(viewMode === "preview" || viewMode === "split") && (
+            <div className={viewMode === "split" ? "w-1/2 overflow-y-auto" : "flex-1"}>
+              <PaperPreview sections={sections} journal={selectedJournal} />
             </div>
           )}
 
