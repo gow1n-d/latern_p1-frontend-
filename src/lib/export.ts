@@ -117,8 +117,9 @@ export function exportToPDF(sections: PaperSection[], journal: string, paperTitl
   const headLh = lineH(config.headingSize, 1.2);
   let y = margin;
 
+  const bottomMargin = ph - margin;
   const addPage = () => { doc.addPage(); y = margin; };
-  const checkSpace = (needed: number) => { if (y + needed > ph - margin) addPage(); };
+  const checkSpace = (needed: number) => { if (y + needed > bottomMargin) addPage(); };
 
   // ── Journal header ──
   if (config.journalHeader) {
