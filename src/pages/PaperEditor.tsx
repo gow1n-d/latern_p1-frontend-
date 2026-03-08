@@ -642,11 +642,14 @@ export default function PaperEditor() {
         </nav>
 
         <div className="border-t border-border p-3 space-y-2">
-          <Button variant="outline" size="sm" className="w-full gap-2 justify-start">
-            <AlertTriangle className="h-4 w-4" /> Validate Format
+          <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={handleValidateFormat} disabled={isValidating}>
+            {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />} Validate Format
           </Button>
-          <Button variant="outline" size="sm" className="w-full gap-2 justify-start">
-            <FileText className="h-4 w-4" /> Check Plagiarism
+          <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={handleCheckPlagiarism} disabled={isCheckingPlagiarism}>
+            {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Check Plagiarism
+          </Button>
+          <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowScholar(true)}>
+            <GraduationCap className="h-4 w-4" /> Google Scholar
           </Button>
         </div>
       </aside>
