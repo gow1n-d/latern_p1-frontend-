@@ -411,19 +411,19 @@ export default function PaperEditor() {
   // Journal picker
   if (showJournalPicker) {
     return (
-      <div className="min-h-screen bg-background overflow-y-auto p-6">
-        <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen bg-background overflow-y-auto p-4 sm:p-6">
+        <div className="max-w-5xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-8 text-sm">
+            <button onClick={() => navigate("/dashboard")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-6 sm:mb-8 text-sm">
               <ChevronLeft className="h-4 w-4" /> Back to Dashboard
             </button>
-            <h1 className="font-display text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
-            <p className="text-muted-foreground text-lg mb-10">Select your target format to load the correct template.</p>
+            <h1 className="font-display text-2xl sm:text-4xl font-bold text-foreground mb-2">Create New Paper</h1>
+            <p className="text-muted-foreground text-base sm:text-lg mb-8 sm:mb-10">Select your target format to load the correct template.</p>
 
             {formatCategories.map((cat) => (
-              <div key={cat.label} className="mb-8">
-                <h2 className="font-display text-lg font-semibold text-foreground mb-3">{cat.label}</h2>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div key={cat.label} className="mb-6 sm:mb-8">
+                <h2 className="font-display text-base sm:text-lg font-semibold text-foreground mb-3">{cat.label}</h2>
+                <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {cat.formats.map((f) => (
                     <button
                       key={f.id}
