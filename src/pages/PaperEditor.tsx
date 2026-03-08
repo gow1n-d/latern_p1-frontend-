@@ -1305,7 +1305,7 @@ export default function PaperEditor() {
                           onChange={(e) => setAuthorDetails(p => ({ ...p, email: e.target.value }))} />
                       </div>
                     </div>
-                  );
+                    </>);
                 })()}
                 <Button variant="hero" className="w-full mt-4" onClick={() => setShowAuthorModal(false)}>
                   Save Author Details
