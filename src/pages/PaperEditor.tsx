@@ -319,7 +319,12 @@ export default function PaperEditor() {
                   {cat.formats.map((f) => (
                     <button
                       key={f.id}
-                      onClick={() => { setSelectedJournal(f.id); setShowJournalPicker(false); setShowMetaForm(true); }}
+                      onClick={() => {
+                        setSelectedJournal(f.id);
+                        setSections(getSectionsForFormat(f.id));
+                        setShowJournalPicker(false);
+                        setShowMetaForm(true);
+                      }}
                       className={`group rounded-xl border-2 p-5 text-left transition-all hover:shadow-card-hover ${
                         selectedJournal === f.id ? "border-accent bg-accent/5" : "border-border bg-card hover:border-accent/30"
                       }`}
