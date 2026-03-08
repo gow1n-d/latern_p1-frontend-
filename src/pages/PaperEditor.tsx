@@ -158,7 +158,7 @@ export default function PaperEditor() {
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
   const [journalSearch, setJournalSearch] = useState("");
   const [authorDetails, setAuthorDetails] = useState({
-    authorName: "", coAuthorName: "", department: "", institution: "", city: "", country: "", email: "",
+    authorNames: [""] as string[], department: "", institution: "", city: "", country: "", email: "",
   });
   const [isFixingValidation, setIsFixingValidation] = useState(false);
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);

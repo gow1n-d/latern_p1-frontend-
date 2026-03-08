@@ -2,13 +2,15 @@ import { useRef } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
 
 export type AuthorDetails = {
-  authorName: string;
-  coAuthorName: string;
+  authorNames: string[];
   department: string;
   institution: string;
   city: string;
   country?: string;
   email: string;
+  // legacy compat
+  authorName?: string;
+  coAuthorName?: string;
 };
 
 type FormatConfig = {
