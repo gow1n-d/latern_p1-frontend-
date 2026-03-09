@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
-  BookOpen, Plus, FileText, Clock, MoreVertical, Search, Sparkles,
-  Trash2, Loader2, LogOut, User, Settings
+  BookOpen, Plus, Clock, MoreVertical, Search, Sparkles,
+  Trash2, Loader2, LogOut, User, Settings, Crown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate } from "react-router-dom";
 import { usePapers, useDeletePaper } from "@/hooks/usePapers";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -55,6 +55,7 @@ const journalColors: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { isAdmin, isPro } = useUserRole();
   const { data: papers, isLoading } = usePapers();
   const deletePaper = useDeletePaper();
   const [searchQuery, setSearchQuery] = useState("");
@@ -104,6 +105,16 @@ export default function Dashboard() {
             <span className="font-display text-xl font-bold text-foreground">PaperForge</span>
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+              <span className="flex items-center gap-1 rounded-full bg-accent/20 px-2.5 py-1 text-xs font-bold text-accent">
+                <Crown className="h-3 w-3" /> SUPERADMIN
+              </span>
+            )}
+            {!isAdmin && isPro && (
+              <span className="flex items-center gap-1 rounded-full bg-accent/20 px-2.5 py-1 text-xs font-bold text-accent">
+                <Crown className="h-3 w-3" /> PRO
+              </span>
+            )}
             <span className="text-sm text-muted-foreground hidden sm:block">{user?.email}</span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -115,9 +126,11 @@ export default function Dashboard() {
                 <DropdownMenuItem onClick={() => navigate("/profile")} className="gap-2">
                   <User className="h-4 w-4" /> Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/pricing")} className="gap-2">
-                  <Settings className="h-4 w-4" /> Upgrade Plan
-                </DropdownMenuItem>
+                {!isPro && (
+                  <DropdownMenuItem onClick={() => navigate("/pricing")} className="gap-2">
+                    <Settings className="h-4 w-4" /> Upgrade Plan
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={handleSignOut} className="gap-2 text-destructive">
                   <LogOut className="h-4 w-4" /> Sign Out
                 </DropdownMenuItem>
