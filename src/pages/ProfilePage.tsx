@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { BookOpen, User, Building2, Save, Loader2, LogOut, ArrowLeft, Mail } from "lucide-react";
+import { BookOpen, User, Building2, Save, Loader2, LogOut, ArrowLeft, Mail, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
