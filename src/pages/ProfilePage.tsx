@@ -117,10 +117,27 @@ export default function ProfilePage() {
           {/* Subscription Card */}
           <div className="rounded-xl border border-border bg-card p-6 shadow-card mb-6">
             <h2 className="font-display text-lg font-semibold text-card-foreground mb-2">Subscription</h2>
-            <p className="text-sm text-muted-foreground mb-4">You're on the <span className="font-semibold text-foreground">Free Plan</span></p>
-            <Button variant="outline" onClick={() => navigate("/pricing")} className="gap-2">
-              Upgrade to Pro
-            </Button>
+            {isAdmin ? (
+              <div className="flex items-center gap-2 mb-4">
+                <Crown className="h-5 w-5 text-accent" />
+                <p className="text-sm text-muted-foreground">
+                  You're a <span className="font-bold text-accent">Superadmin</span> with full access to all Pro features
+                </p>
+              </div>
+            ) : isPro ? (
+              <p className="text-sm text-muted-foreground mb-4">
+                You're on the <span className="font-semibold text-foreground">Pro Plan</span>
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">
+                  You're on the <span className="font-semibold text-foreground">Free Plan</span>
+                </p>
+                <Button variant="outline" onClick={() => navigate("/pricing")} className="gap-2">
+                  Upgrade to Pro
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Danger Zone */}
