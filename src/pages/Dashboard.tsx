@@ -55,6 +55,7 @@ const journalColors: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { isAdmin, isPro } = useUserRole();
   const { data: papers, isLoading } = usePapers();
   const deletePaper = useDeletePaper();
   const [searchQuery, setSearchQuery] = useState("");
