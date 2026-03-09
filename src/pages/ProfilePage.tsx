@@ -11,6 +11,7 @@ import { toast } from "sonner";
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { isAdmin, isPro } = useUserRole();
   const [displayName, setDisplayName] = useState("");
   const [institution, setInstitution] = useState("");
   const [loading, setLoading] = useState(false);
