@@ -11,8 +11,8 @@ serve(async (req) => {
   try {
     const { sections, journal } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GOOGLE_GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
+    if (!GOOGLE_GEMINI_API_KEY) throw new Error("GOOGLE_GEMINI_API_KEY is not configured");
 
     const allContent = sections
       .filter((s: any) => s.content.trim() && !["title", "keywords", "references", "works-cited", "bibliography", "reference-list"].includes(s.id))
@@ -56,43 +56,35 @@ Evaluate based on:
 3. Flag sections that feel templated or lack unique research perspective
 4. Be thorough but fair — academic writing naturally shares conventions`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analyze this ${journal || "academic"} paper for originality and AI-generated content:\n\n${allContent}` },
-        ],
-        stream: false,
-        temperature: 0.1,
-      }),
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            { role: "user", parts: [{ text: `${systemPrompt}\n\nAnalyze this ${journal || "academic"} paper for originality and AI-generated content:\n\n${allContent}` }] },
+          ],
+          generationConfig: { temperature: 0.1 },
+        }),
+      }
+    );
 
     if (!response.ok) {
+      const t = await response.text();
+      console.error("Gemini API error:", response.status, t);
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
       return new Response(JSON.stringify({ error: "Analysis failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content || "";
+    const content = aiResponse.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     let result;
     try {
