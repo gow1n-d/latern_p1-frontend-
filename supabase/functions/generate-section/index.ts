@@ -76,7 +76,7 @@ ${existing_content ? `\nExisting content from other sections (use for consistenc
 REMINDER: Write ONLY based on the details above. If a detail says "Not specified", acknowledge the gap gracefully without inventing information. Write the ${section} section now.`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse&key=${GOOGLE_GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GOOGLE_GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
