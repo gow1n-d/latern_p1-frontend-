@@ -76,7 +76,7 @@ ${existing_content ? `\nExisting content from other sections (use for consistenc
 
 REMINDER: Write ONLY based on the details above. If a detail says "Not specified", acknowledge the gap gracefully without inventing information. Write the ${section} section now.`;
 
-    const response = await fetch(
+    const googleResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GOOGLE_GEMINI_API_KEY}`,
       {
         method: "POST",
@@ -90,12 +90,60 @@ REMINDER: Write ONLY based on the details above. If a detail says "Not specified
       }
     );
 
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("Gemini API error:", response.status, t);
-      if (response.status === 429) {
+    if (!googleResponse.ok) {
+      const googleErrorText = await googleResponse.text();
+      console.error("Gemini API error:", googleResponse.status, googleErrorText);
+
+      const canFallbackToGateway = !!LOVABLE_API_KEY && (googleResponse.status === 429 || googleResponse.status === 402);
+      if (canFallbackToGateway) {
+        const gatewayResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.2,
+            stream: true,
+          }),
+        });
+
+        if (!gatewayResponse.ok || !gatewayResponse.body) {
+          const gatewayErrorText = await gatewayResponse.text();
+          console.error("Lovable AI gateway error:", gatewayResponse.status, gatewayErrorText);
+          if (gatewayResponse.status === 429) {
+            return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
+              status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          if (gatewayResponse.status === 402) {
+            return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds in workspace settings." }), {
+              status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          return new Response(JSON.stringify({ error: "AI generation failed" }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(gatewayResponse.body, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      if (googleResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (googleResponse.status === 402) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds in workspace settings." }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       return new Response(JSON.stringify({ error: "AI generation failed" }), {
@@ -110,7 +158,7 @@ REMINDER: Write ONLY based on the details above. If a detail says "Not specified
 
     (async () => {
       try {
-        const reader = response.body!.getReader();
+        const reader = googleResponse.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
 

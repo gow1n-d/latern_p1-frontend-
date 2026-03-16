@@ -244,6 +244,7 @@ export default function PaperEditor() {
     const titleContent = sections.find((s) => s.id === "title")?.content || "";
     if (!titleContent.trim()) { toast.error("Please add a paper title first"); return; }
 
+    const previousContent = currentSection?.content || "";
     setIsGenerating(true);
     let accumulated = "";
     setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: "" } : s)));
@@ -270,13 +271,18 @@ export default function PaperEditor() {
         onDone: () => {
           setIsGenerating(false);
           toast.success(`${currentSection?.label} generated!`);
-          // trigger auto-save
           setSections((prev) => {
             autoSave(prev);
             return prev;
           });
         },
-        onError: (err) => { setIsGenerating(false); toast.error(err); },
+        onError: (err) => {
+          setIsGenerating(false);
+          setSections((prev) => prev.map((s) => (
+            s.id === activeSection ? { ...s, content: accumulated || previousContent } : s
+          )));
+          toast.error(err);
+        },
       }
     );
   }, [activeSection, sections, selectedJournal, paperMeta, currentSection, autoSave]);
