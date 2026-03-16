@@ -46,6 +46,7 @@ serve(async (req) => {
     const { section, title, domain, methodology, results_summary, journal, existing_content } = await req.json();
 
     const GOOGLE_GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!GOOGLE_GEMINI_API_KEY) throw new Error("GOOGLE_GEMINI_API_KEY is not configured");
 
     const sectionGuide = sectionPrompts[section] || `Write the "${section}" section for an academic research paper. Use formal academic writing style. Use ONLY information provided below.`;
