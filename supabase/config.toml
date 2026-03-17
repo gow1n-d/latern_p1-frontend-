@@ -5,3 +5,15 @@ verify_jwt = false
 
 [functions.ai-assist]
 verify_jwt = false
+
+[functions.humanize-text]
+verify_jwt = false
+
+[functions.check-plagiarism]
+verify_jwt = false
+
+[functions.scholar-search]
+verify_jwt = false
+
+[functions.validate-format]
+verify_jwt = false
