@@ -5,14 +5,43 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function callAI(messages: any[], temperature: number): Promise<string | null> {
+  const orKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (orKey) {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${orKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "google/gemini-2.0-flash-001", messages, temperature }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.choices?.[0]?.message?.content || null;
+    }
+    console.error("OpenRouter error:", resp.status);
+  }
+
+  const lvKey = Deno.env.get("LOVABLE_API_KEY");
+  if (lvKey) {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${lvKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages, temperature }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.choices?.[0]?.message?.content || null;
+    }
+    console.error("Lovable gateway error:", resp.status);
+  }
+
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { query, journal, paperTitle } = await req.json();
-
-    const GOOGLE_GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
-    if (!GOOGLE_GEMINI_API_KEY) throw new Error("GOOGLE_GEMINI_API_KEY is not configured");
 
     if (!query?.trim()) {
       return new Response(JSON.stringify({ error: "Search query is required" }), {
@@ -20,9 +49,9 @@ serve(async (req) => {
       });
     }
 
-    const systemPrompt = `You are an expert academic research assistant with extensive knowledge of published research papers across all domains. Given a search query, generate realistic and properly formatted academic references that would be relevant to the query topic.
+    const systemPrompt = `You are an expert academic research assistant. Given a search query, generate realistic and properly formatted academic references.
 
-Return a JSON array of 8-12 references. Each reference should have this EXACT structure (no markdown, just raw JSON array):
+Return a JSON array of 8-12 references with this EXACT structure (no markdown, just raw JSON array):
 
 [
   {
@@ -33,46 +62,25 @@ Return a JSON array of 8-12 references. Each reference should have this EXACT st
     "doi": "<doi if known, or empty string>",
     "abstract": "<brief 1-2 sentence summary>",
     "citations": <estimated citation count>,
-    "relevance": <0-100 relevance score to the query>,
+    "relevance": <0-100>,
     "formatted_${journal || "ieee"}": "<fully formatted citation in ${journal?.toUpperCase() || "IEEE"} style>"
   }
 ]
 
-Generate references that:
-- Are highly relevant to the search query
-- Span recent years (2018-2025) with some seminal older works
-- Include a mix of journal papers and conference proceedings
-- Have realistic author names and publication venues
-- Are properly formatted for the target citation style`;
+Generate references spanning 2018-2025 with some seminal older works. Include a mix of journal papers and conference proceedings.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            { role: "user", parts: [{ text: `${systemPrompt}\n\nFind relevant academic papers for: "${query}"${paperTitle ? `\nContext: This is for a paper titled "${paperTitle}"` : ""}` }] },
-          ],
-        }),
-      }
-    );
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Find relevant academic papers for: "${query}"${paperTitle ? `\nContext: This is for a paper titled "${paperTitle}"` : ""}` },
+    ];
 
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("Gemini API error:", response.status, t);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: "Search failed" }), {
+    const content = await callAI(messages, 0.3);
+
+    if (!content) {
+      return new Response(JSON.stringify({ error: "All AI providers failed. Please try again later." }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const aiResponse = await response.json();
-    const content = aiResponse.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     let results;
     try {
