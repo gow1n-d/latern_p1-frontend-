@@ -5,14 +5,35 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function callOpenRouter(messages: any[], stream: boolean, temperature: number) {
+  const key = Deno.env.get("OPENROUTER_API_KEY");
+  if (!key) return null;
+  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "google/gemini-2.0-flash-001", messages, stream, temperature }),
+  });
+  if (!resp.ok) { console.error("OpenRouter error:", resp.status); return null; }
+  return resp;
+}
+
+async function callLovableGateway(messages: any[], stream: boolean, temperature: number) {
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) return null;
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages, stream, temperature }),
+  });
+  if (!resp.ok) { console.error("Lovable gateway error:", resp.status); return null; }
+  return resp;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { instruction, content, journal } = await req.json();
-
-    const GOOGLE_GEMINI_API_KEY = Deno.env.get("GOOGLE_GEMINI_API_KEY");
-    if (!GOOGLE_GEMINI_API_KEY) throw new Error("GOOGLE_GEMINI_API_KEY is not configured");
 
     const systemPrompt = `You are an expert academic writing assistant for ${journal || "IEEE"} journal papers.
 
@@ -23,77 +44,20 @@ CRITICAL RULES:
 4. Preserve all factual claims, numbers, and references exactly as they appear in the original.
 5. If the instruction asks to expand, elaborate ONLY on what is already stated — never invent new findings or references.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GOOGLE_GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            { role: "user", parts: [{ text: `${systemPrompt}\n\nInstruction: ${instruction}\n\nContent to improve:\n${content}` }] },
-          ],
-          generationConfig: { temperature: 0.15 },
-        }),
-      }
-    );
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Instruction: ${instruction}\n\nContent to improve:\n${content}` },
+    ];
 
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("Gemini API error:", response.status, t);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: "AI improvement failed" }), {
+    const resp = await callOpenRouter(messages, true, 0.15) || await callLovableGateway(messages, true, 0.15);
+
+    if (!resp || !resp.body) {
+      return new Response(JSON.stringify({ error: "All AI providers failed. Please try again later." }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Transform Gemini SSE to OpenAI-compatible SSE format
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    const encoder = new TextEncoder();
-
-    (async () => {
-      try {
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          let idx: number;
-          while ((idx = buffer.indexOf("\n")) !== -1) {
-            let line = buffer.slice(0, idx).trim();
-            buffer = buffer.slice(idx + 1);
-
-            if (!line.startsWith("data: ")) continue;
-            const jsonStr = line.slice(6).trim();
-            if (!jsonStr || jsonStr === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) {
-                const openAIChunk = { choices: [{ delta: { content: text } }] };
-                await writer.write(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
-              }
-            } catch { /* skip partial */ }
-          }
-        }
-        await writer.write(encoder.encode("data: [DONE]\n\n"));
-      } catch (e) {
-        console.error("Stream transform error:", e);
-      } finally {
-        await writer.close();
-      }
-    })();
-
-    return new Response(readable, {
+    return new Response(resp.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
