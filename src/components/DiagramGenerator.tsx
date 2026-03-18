@@ -22,6 +22,7 @@ type DiagramGeneratorProps = {
   sectionLabel: string;
   methodology: string;
   results_summary: string;
+  onDiagramGenerated?: (section: string, data: { type: "mermaid" | "image"; code?: string; imageData?: string; caption: string; svg?: string }) => void;
 };
 
 const DIAGRAM_TYPES_SOFTWARE = [
