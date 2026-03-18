@@ -1428,6 +1428,18 @@ export default function PaperEditor() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Diagram Generator */}
+      <DiagramGenerator
+        show={showDiagramGenerator}
+        onClose={() => setShowDiagramGenerator(false)}
+        title={sections.find(s => s.id === "title")?.content || ""}
+        domain={paperMeta.domain}
+        section={activeSection}
+        sectionLabel={currentSection?.label || ""}
+        methodology={paperMeta.methodology}
+        results_summary={paperMeta.results_summary}
+      />
     </div>
   );
 }
