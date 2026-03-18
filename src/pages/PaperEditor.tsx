@@ -1479,6 +1479,9 @@ export default function PaperEditor() {
         sectionLabel={currentSection?.label || ""}
         methodology={paperMeta.methodology}
         results_summary={paperMeta.results_summary}
+        onDiagramGenerated={(sec, data) => {
+          setSectionDiagrams(prev => ({ ...prev, [sec]: data }));
+        }}
       />
     </div>
   );
