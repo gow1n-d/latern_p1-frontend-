@@ -166,6 +166,42 @@ export type ScholarResult = {
   [key: string]: any;
 };
 
+export type DiagramResult = {
+  success: boolean;
+  paperType: "hardware" | "software" | "mixed";
+  type: "mermaid" | "image";
+  code?: string;
+  imageData?: string;
+  caption: string;
+};
+
+export async function generateDiagram(
+  params: {
+    title: string;
+    domain: string;
+    section: string;
+    methodology: string;
+    results_summary: string;
+    description?: string;
+    diagram_type?: string;
+    force_type?: "hardware" | "software" | "mixed";
+  }
+): Promise<DiagramResult> {
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/generate-diagram`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    try { const j = JSON.parse(text); throw new Error(j.error); } catch (e) { if (e instanceof Error) throw e; throw new Error("Diagram generation failed"); }
+  }
+  return resp.json();
+}
+
 export async function searchScholar(
   params: { query: string; journal: string; paperTitle?: string }
 ): Promise<{ success: boolean; results: ScholarResult[] }> {

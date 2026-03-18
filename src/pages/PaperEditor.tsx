@@ -5,7 +5,7 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2
+  Moon, Sun, Wand2, Image
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -14,6 +14,7 @@ import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiaris
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
+import DiagramGenerator from "@/components/DiagramGenerator";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -163,6 +164,7 @@ export default function PaperEditor() {
   const [isFixingValidation, setIsFixingValidation] = useState(false);
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
   const [showAuthorModal, setShowAuthorModal] = useState(false);
+  const [showDiagramGenerator, setShowDiagramGenerator] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -1010,6 +1012,11 @@ export default function PaperEditor() {
               {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
               {isHumanizing ? "Humanizing..." : "Humanize"}
             </Button>
+            {canGenerate && (
+              <Button variant="ghost" size="sm" className="gap-2 text-accent" onClick={() => setShowDiagramGenerator(true)} disabled={isBusy}>
+                <Image className="h-4 w-4" /> Diagram
+              </Button>
+            )}
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
               <MessageSquare className="h-4 w-4 text-accent" /> AI Assist
             </Button>
@@ -1421,6 +1428,18 @@ export default function PaperEditor() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Diagram Generator */}
+      <DiagramGenerator
+        show={showDiagramGenerator}
+        onClose={() => setShowDiagramGenerator(false)}
+        title={sections.find(s => s.id === "title")?.content || ""}
+        domain={paperMeta.domain}
+        section={activeSection}
+        sectionLabel={currentSection?.label || ""}
+        methodology={paperMeta.methodology}
+        results_summary={paperMeta.results_summary}
+      />
     </div>
   );
 }
