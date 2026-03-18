@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, type ValidationResult, type PlagiarismResult, type ScholarResult } from "@/lib/ai";
+import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
