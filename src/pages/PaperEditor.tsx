@@ -130,6 +130,7 @@ export default function PaperEditor() {
   const [completingSection, setCompletingSection] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("title");
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [sectionDiagrams, setSectionDiagrams] = useState<Record<string, { type: "mermaid" | "image"; code?: string; imageData?: string; caption: string; svg?: string }>>({});
   const [aiMessage, setAiMessage] = useState("");
   const [showJournalPicker, setShowJournalPicker] = useState(isNew);
   const [showMetaForm, setShowMetaForm] = useState(false);
