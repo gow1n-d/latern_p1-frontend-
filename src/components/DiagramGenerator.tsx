@@ -79,6 +79,20 @@ export default function DiagramGenerator({
         force_type: forceType || undefined,
       });
       setResult(res);
+      // Pass diagram to parent for inline display
+      if (onDiagramGenerated) {
+        const diagramData: any = { type: res.type, caption: res.caption };
+        if (res.type === "mermaid") { diagramData.code = res.code; diagramData.svg = renderedSvg; }
+        if (res.type === "image") { diagramData.imageData = res.imageData; }
+        // Wait for mermaid render then pass
+        if (res.type === "mermaid" && res.code) {
+          try {
+            const { svg } = await mermaid.render("inline-" + Date.now(), res.code);
+            diagramData.svg = svg;
+          } catch {}
+        }
+        onDiagramGenerated(section, diagramData);
+      }
       toast.success(`${res.paperType} diagram generated!`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Diagram generation failed");
