@@ -14,6 +14,7 @@ import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiaris
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
+import DiagramGenerator from "@/components/DiagramGenerator";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
