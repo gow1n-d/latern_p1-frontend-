@@ -1012,6 +1012,11 @@ export default function PaperEditor() {
               {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
               {isHumanizing ? "Humanizing..." : "Humanize"}
             </Button>
+            {canGenerate && (
+              <Button variant="ghost" size="sm" className="gap-2 text-accent" onClick={() => setShowDiagramGenerator(true)} disabled={isBusy}>
+                <Image className="h-4 w-4" /> Diagram
+              </Button>
+            )}
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
               <MessageSquare className="h-4 w-4 text-accent" /> AI Assist
             </Button>
