@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, type ValidationResult, type PlagiarismResult, type ScholarResult } from "@/lib/ai";
+import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
@@ -130,6 +130,7 @@ export default function PaperEditor() {
   const [completingSection, setCompletingSection] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("title");
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [sectionDiagrams, setSectionDiagrams] = useState<Record<string, { type: "mermaid" | "image"; code?: string; imageData?: string; caption: string; svg?: string }>>({});
   const [aiMessage, setAiMessage] = useState("");
   const [showJournalPicker, setShowJournalPicker] = useState(isNew);
   const [showMetaForm, setShowMetaForm] = useState(false);
@@ -1067,6 +1068,45 @@ export default function PaperEditor() {
                       {currentSection.content.trim().split(/\s+/).filter(Boolean).length} words
                     </div>
                   )}
+
+                  {/* Inline Diagram Section */}
+                  {canGenerate && ["methodology", "experimental-setup", "results", "implementation", "introduction", "background"].includes(activeSection) && (
+                    <div className="mt-6 border-t border-border pt-4">
+                      {sectionDiagrams[activeSection] ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                              <Image className="h-4 w-4 text-accent" /> Section Diagram
+                            </h3>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => setShowDiagramGenerator(true)}>
+                                Regenerate
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-muted/30 p-4 overflow-auto">
+                            {sectionDiagrams[activeSection].type === "mermaid" && sectionDiagrams[activeSection].svg ? (
+                              <div className="flex justify-center" dangerouslySetInnerHTML={{ __html: sectionDiagrams[activeSection].svg! }} />
+                            ) : sectionDiagrams[activeSection].type === "image" && sectionDiagrams[activeSection].imageData ? (
+                              <img src={sectionDiagrams[activeSection].imageData} alt={sectionDiagrams[activeSection].caption} className="max-w-full mx-auto rounded-lg" />
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-muted-foreground italic text-center">{sectionDiagrams[activeSection].caption}</p>
+                        </div>
+                      ) : currentSection?.content.trim() ? (
+                        <button
+                          onClick={() => setShowDiagramGenerator(true)}
+                          className="w-full rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-4 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
+                        >
+                          <Image className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
+                          <p className="text-sm font-medium text-foreground">Generate a diagram for this section</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            AI will auto-detect your paper type (hardware/software) and create the appropriate diagram
+                          </p>
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </motion.div>
               </div>
             </div>
@@ -1439,6 +1479,9 @@ export default function PaperEditor() {
         sectionLabel={currentSection?.label || ""}
         methodology={paperMeta.methodology}
         results_summary={paperMeta.results_summary}
+        onDiagramGenerated={(sec, data) => {
+          setSectionDiagrams(prev => ({ ...prev, [sec]: data }));
+        }}
       />
     </div>
   );

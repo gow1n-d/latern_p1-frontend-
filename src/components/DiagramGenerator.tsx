@@ -22,6 +22,7 @@ type DiagramGeneratorProps = {
   sectionLabel: string;
   methodology: string;
   results_summary: string;
+  onDiagramGenerated?: (section: string, data: { type: "mermaid" | "image"; code?: string; imageData?: string; caption: string; svg?: string }) => void;
 };
 
 const DIAGRAM_TYPES_SOFTWARE = [
@@ -36,7 +37,7 @@ const DIAGRAM_TYPES_HARDWARE = [
 
 export default function DiagramGenerator({
   show, onClose, title, domain, section, sectionLabel,
-  methodology, results_summary,
+  methodology, results_summary, onDiagramGenerated,
 }: DiagramGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<DiagramResult | null>(null);
@@ -78,6 +79,20 @@ export default function DiagramGenerator({
         force_type: forceType || undefined,
       });
       setResult(res);
+      // Pass diagram to parent for inline display
+      if (onDiagramGenerated) {
+        const diagramData: any = { type: res.type, caption: res.caption };
+        if (res.type === "mermaid") { diagramData.code = res.code; diagramData.svg = renderedSvg; }
+        if (res.type === "image") { diagramData.imageData = res.imageData; }
+        // Wait for mermaid render then pass
+        if (res.type === "mermaid" && res.code) {
+          try {
+            const { svg } = await mermaid.render("inline-" + Date.now(), res.code);
+            diagramData.svg = svg;
+          } catch {}
+        }
+        onDiagramGenerated(section, diagramData);
+      }
       toast.success(`${res.paperType} diagram generated!`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Diagram generation failed");
