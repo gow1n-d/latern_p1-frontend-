@@ -5,7 +5,7 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2
+  Moon, Sun, Wand2, Image
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
