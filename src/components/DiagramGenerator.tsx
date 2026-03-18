@@ -37,7 +37,7 @@ const DIAGRAM_TYPES_HARDWARE = [
 
 export default function DiagramGenerator({
   show, onClose, title, domain, section, sectionLabel,
-  methodology, results_summary,
+  methodology, results_summary, onDiagramGenerated,
 }: DiagramGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<DiagramResult | null>(null);
