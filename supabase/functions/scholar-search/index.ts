@@ -6,6 +6,21 @@ const corsHeaders = {
 };
 
 async function callAI(messages: any[], temperature: number): Promise<string | null> {
+  // Try NVIDIA first
+  const nvKey = Deno.env.get("NVIDIA_API_KEY");
+  if (nvKey) {
+    const resp = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${nvKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "meta/llama-3.3-70b-instruct", messages, temperature, max_tokens: 4096 }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.choices?.[0]?.message?.content || null;
+    }
+    console.error("NVIDIA error:", resp.status);
+  }
+
   const orKey = Deno.env.get("OPENROUTER_API_KEY");
   if (orKey) {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
