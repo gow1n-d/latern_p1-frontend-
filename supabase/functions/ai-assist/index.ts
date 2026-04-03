@@ -5,6 +5,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function callNvidia(messages: any[], stream: boolean, temperature: number) {
+  const key = Deno.env.get("NVIDIA_API_KEY");
+  if (!key) return null;
+  const resp = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "meta/llama-3.3-70b-instruct", messages, stream, temperature, max_tokens: 4096 }),
+  });
+  if (!resp.ok) { console.error("NVIDIA error:", resp.status); return null; }
+  return resp;
+}
+
 async function callOpenRouter(messages: any[], stream: boolean, temperature: number) {
   const key = Deno.env.get("OPENROUTER_API_KEY");
   if (!key) return null;
@@ -49,7 +61,7 @@ CRITICAL RULES:
       { role: "user", content: `Instruction: ${instruction}\n\nContent to improve:\n${content}` },
     ];
 
-    const resp = await callOpenRouter(messages, true, 0.15) || await callLovableGateway(messages, true, 0.15);
+    const resp = await callNvidia(messages, true, 0.15) || await callOpenRouter(messages, true, 0.15) || await callLovableGateway(messages, true, 0.15);
 
     if (!resp || !resp.body) {
       return new Response(JSON.stringify({ error: "All AI providers failed. Please try again later." }), {

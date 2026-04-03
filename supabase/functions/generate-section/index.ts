@@ -39,53 +39,39 @@ const sectionPrompts: Record<string, string> = {
   methods: "Write a methods section using ONLY the procedures and tools described by the user.",
 };
 
-async function callOpenRouter(messages: any[], stream: boolean, temperature: number) {
-  const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
-  if (!OPENROUTER_API_KEY) return null;
+async function callNvidia(messages: any[], stream: boolean, temperature: number) {
+  const key = Deno.env.get("NVIDIA_API_KEY");
+  if (!key) return null;
+  const resp = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "meta/llama-3.3-70b-instruct", messages, stream, temperature, max_tokens: 4096 }),
+  });
+  if (!resp.ok) { console.error("NVIDIA error:", resp.status, await resp.text()); return null; }
+  return resp;
+}
 
+async function callOpenRouter(messages: any[], stream: boolean, temperature: number) {
+  const key = Deno.env.get("OPENROUTER_API_KEY");
+  if (!key) return null;
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.0-flash-001",
-      messages,
-      stream,
-      temperature,
-    }),
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "google/gemini-2.0-flash-001", messages, stream, temperature }),
   });
-
-  if (!resp.ok) {
-    console.error("OpenRouter error:", resp.status, await resp.text());
-    return null;
-  }
+  if (!resp.ok) { console.error("OpenRouter error:", resp.status); return null; }
   return resp;
 }
 
 async function callLovableGateway(messages: any[], stream: boolean, temperature: number) {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return null;
-
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) return null;
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages,
-      stream,
-      temperature,
-    }),
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages, stream, temperature }),
   });
-
-  if (!resp.ok) {
-    console.error("Lovable gateway error:", resp.status, await resp.text());
-    return null;
-  }
+  if (!resp.ok) { console.error("Lovable gateway error:", resp.status); return null; }
   return resp;
 }
 
@@ -127,8 +113,8 @@ REMINDER: Write ONLY based on the details above. Write the ${section} section no
       { role: "user", content: userPrompt },
     ];
 
-    // Try OpenRouter first, then Lovable Gateway
-    const resp = await callOpenRouter(messages, true, 0.2) || await callLovableGateway(messages, true, 0.2);
+    // Try NVIDIA first, then OpenRouter, then Lovable Gateway
+    const resp = await callNvidia(messages, true, 0.2) || await callOpenRouter(messages, true, 0.2) || await callLovableGateway(messages, true, 0.2);
 
     if (!resp || !resp.body) {
       return new Response(JSON.stringify({ error: "All AI providers failed. Please try again later." }), {
