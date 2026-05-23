@@ -103,3 +103,19 @@ The AI edge functions require your Gemini API Key to generate content and diagra
 cd backend && supabase secrets set GEMINI_API_KEY="AIzaSyA67JjBR9Hz0MvKJKT63XhlDD7XXbd6pvc" --project-ref fudnetxikhjyekvvddix
 ```
 Once set, the live functions will immediately read the key from the Supabase Vault securely.
+
+---
+
+## 🔒 Part 3: Database Access Control & IP Whitelisting (Render Outbound IPs)
+
+If you have enabled **Network Restrictions** (IP Whitelisting) on your Supabase Database to secure database access, you must authorize **Render's outbound IP ranges** to allow secure communication with your database. 
+
+Navigate to your **Supabase Dashboard** -> **Project Settings** -> **Database** -> **Network Restrictions** and add the following CIDR IP blocks:
+
+```text
+74.220.48.0/24
+74.220.56.0/24
+```
+
+Adding these guarantees that Render hosted services can query your PostgreSQL instance securely on ports `6543` (connection pooling) and `5432` (direct connection).
+
