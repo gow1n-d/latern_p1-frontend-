@@ -1,9 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders, requireAuth, readJsonWithLimit, tooLarge } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const MAX_SECTIONS = 20;
+const MAX_SECTION_CHARS = 25_000;
 
 // ---------------- AI provider fallback ----------------
 async function callAI(messages: any[], temperature: number): Promise<string | null> {
@@ -178,8 +177,18 @@ function stylometricScore(text: string): number {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { sections, journal } = await req.json();
+    const body = await readJsonWithLimit(req, 400_000);
+    if (body instanceof Response) return body;
+    const { sections, journal } = body;
+    if (!Array.isArray(sections)) return tooLarge("sections must be an array");
+    if (sections.length > MAX_SECTIONS) return tooLarge(`Too many sections (max ${MAX_SECTIONS})`);
+    for (const s of sections) {
+      if (typeof s?.content === "string" && s.content.length > MAX_SECTION_CHARS) return tooLarge(`Section "${s.id || s.label}" exceeds ${MAX_SECTION_CHARS} chars`);
+    }
     const eligible = sections.filter((s: any) => s.content?.trim() && !["title", "keywords", "references", "works-cited", "bibliography", "reference-list"].includes(s.id));
     if (eligible.length === 0) {
       return new Response(JSON.stringify({ error: "No content to analyze" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });

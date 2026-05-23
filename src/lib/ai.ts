@@ -1,5 +1,12 @@
+import { supabase } from "@/integrations/supabase/client";
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+async function authHeader(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return `Bearer ${data.session?.access_token ?? SUPABASE_KEY}`;
+}
 
 type StreamOptions = {
   onDelta: (text: string) => void;
@@ -63,7 +70,7 @@ export async function generateSection(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });
@@ -78,7 +85,7 @@ export async function aiAssist(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });
@@ -93,7 +100,7 @@ export async function humanizeText(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });
@@ -115,7 +122,7 @@ export async function validateFormat(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });
@@ -153,7 +160,7 @@ export async function checkPlagiarism(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });
@@ -201,7 +208,7 @@ export async function generateDiagram(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });
@@ -219,7 +226,7 @@ export async function searchScholar(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: await authHeader(),
     },
     body: JSON.stringify(params),
   });

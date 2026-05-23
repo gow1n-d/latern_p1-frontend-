@@ -1,9 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders, requireAuth, readJsonWithLimit, tooLarge } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const MAX_FIELD = 20_000;
 
 async function callNvidia(messages: any[], stream: boolean, temperature: number) {
   const key = Deno.env.get("NVIDIA_API_KEY");
@@ -44,8 +42,14 @@ async function callLovableGateway(messages: any[], stream: boolean, temperature:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { content, journal } = await req.json();
+    const body = await readJsonWithLimit(req, 80_000);
+    if (body instanceof Response) return body;
+    const { content, journal } = body;
+    if ((content?.length ?? 0) > MAX_FIELD) return tooLarge("Content too long");
 
     const systemPrompt = `You are an expert academic writing humanizer. Rewrite the given text so it reads like a real human researcher wrote it.
 

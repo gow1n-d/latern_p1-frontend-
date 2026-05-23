@@ -1,9 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, requireAuth, readJsonWithLimit, tooLarge } from "../_shared/auth.ts";
 
 async function callAI(messages: any[], temperature: number): Promise<string | null> {
   // Try NVIDIA first
@@ -55,8 +51,15 @@ async function callAI(messages: any[], temperature: number): Promise<string | nu
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { query, journal, paperTitle } = await req.json();
+    const body = await readJsonWithLimit(req, 20_000);
+    if (body instanceof Response) return body;
+    const { query, journal, paperTitle } = body;
+    if ((query?.length ?? 0) > 500) return tooLarge("Query too long (max 500 chars)");
+    if ((paperTitle?.length ?? 0) > 500) return tooLarge("paperTitle too long");
 
     if (!query?.trim()) {
       return new Response(JSON.stringify({ error: "Search query is required" }), {

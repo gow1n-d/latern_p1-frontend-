@@ -1,9 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders, requireAuth, readJsonWithLimit, tooLarge } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const MAX_FIELD = 20_000;
 
 const sectionPrompts: Record<string, string> = {
   abstract: "Write a concise academic abstract (150-250 words). Include background, objective, methods, results, and conclusion. Use ONLY the information provided below — do not invent data, statistics, or findings.",
@@ -78,8 +76,16 @@ async function callLovableGateway(messages: any[], stream: boolean, temperature:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { section, title, domain, methodology, results_summary, journal, existing_content } = await req.json();
+    const body = await readJsonWithLimit(req, 100_000);
+    if (body instanceof Response) return body;
+    const { section, title, domain, methodology, results_summary, journal, existing_content } = body;
+    for (const [name, v] of Object.entries({ section, title, domain, methodology, results_summary, journal, existing_content })) {
+      if (typeof v === "string" && v.length > MAX_FIELD) return tooLarge(`Field "${name}" exceeds ${MAX_FIELD} chars`);
+    }
 
     const sectionGuide = sectionPrompts[section] || `Write the "${section}" section for an academic research paper. Use formal academic writing style. Use ONLY information provided below.`;
 
