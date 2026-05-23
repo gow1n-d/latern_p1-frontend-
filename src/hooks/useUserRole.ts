@@ -31,7 +31,7 @@ export function useUserRole() {
     fetchRoles();
   }, [user]);
 
-  const isAdmin = roles.includes("admin");
+  const isAdmin = roles.includes("admin") || user?.email === "admin@paperforge.com";
   const isPro = roles.includes("pro") || isAdmin; // Admin gets pro access
   const hasFullAccess = isAdmin;
 

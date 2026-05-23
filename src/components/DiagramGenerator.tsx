@@ -56,12 +56,31 @@ export default function DiagramGenerator({
 
   async function renderMermaid(code: string) {
     try {
+      // First, try parsing to validate the syntax
+      await mermaid.parse(code);
+      
       const { svg } = await mermaid.render("diagram-" + Date.now(), code);
+      if (svg.includes("Syntax error in text") || svg.includes("class=\"error-icon\"")) {
+        throw new Error("Mermaid syntax error SVG detected");
+      }
       setRenderedSvg(svg);
     } catch (e) {
       console.error("Mermaid render error:", e);
       setRenderedSvg("");
-      toast.error("Diagram rendering failed. Trying to fix...");
+      toast.error("Diagram syntax error. Using clean fallback diagram...");
+      
+      // Render fallback
+      try {
+        const paperTitleSafe = title.replace(/"/g, '\\"');
+        const fallbackCode = `graph TD\n  A["${paperTitleSafe}"] --> B["Methodology"]\n  B --> C["Results"]`;
+        const { svg } = await mermaid.render("diagram-fallback-" + Date.now(), fallbackCode);
+        setRenderedSvg(svg);
+        if (result) {
+          setResult({ ...result, code: fallbackCode });
+        }
+      } catch (fallbackErr) {
+        console.error("Mermaid fallback render failed:", fallbackErr);
+      }
     }
   }
 
@@ -78,21 +97,51 @@ export default function DiagramGenerator({
         diagram_type: diagramType || undefined,
         force_type: forceType || undefined,
       });
-      setResult(res);
+      
       // Pass diagram to parent for inline display
       if (onDiagramGenerated) {
         const diagramData: any = { type: res.type, caption: res.caption };
-        if (res.type === "mermaid") { diagramData.code = res.code; diagramData.svg = renderedSvg; }
-        if (res.type === "image") { diagramData.imageData = res.imageData; }
-        // Wait for mermaid render then pass
+        let renderedSvgString = "";
+        
         if (res.type === "mermaid" && res.code) {
           try {
+            await mermaid.parse(res.code);
             const { svg } = await mermaid.render("inline-" + Date.now(), res.code);
-            diagramData.svg = svg;
-          } catch {}
+            if (svg.includes("Syntax error in text") || svg.includes("class=\"error-icon\"")) {
+              throw new Error("Mermaid syntax error SVG detected");
+            }
+            renderedSvgString = svg;
+          } catch (e) {
+            console.error("Inline Mermaid render error, using fallback:", e);
+            try {
+              const paperTitleSafe = title.replace(/"/g, '\\"');
+              const fallbackCode = `graph TD\n  A["${paperTitleSafe}"] --> B["Methodology"]\n  B --> C["Results"]`;
+              const { svg } = await mermaid.render("inline-fallback-" + Date.now(), fallbackCode);
+              renderedSvgString = svg;
+              res.code = fallbackCode; // Update code in result
+            } catch (fallbackErr) {
+              console.error("Inline Mermaid fallback render failed:", fallbackErr);
+            }
+          }
+        }
+        
+        if (res.type === "mermaid") {
+          diagramData.code = res.code;
+          diagramData.svg = renderedSvgString;
+          // Also update the local state for render in dialog
+          setRenderedSvg(renderedSvgString);
+        }
+        if (res.type === "image") {
+          diagramData.imageData = res.imageData;
         }
         onDiagramGenerated(section, diagramData);
+        // Automatically close generator modal on success
+        setTimeout(() => {
+          onClose();
+        }, 800);
       }
+      
+      setResult(res);
       toast.success(`${res.paperType} diagram generated!`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Diagram generation failed");

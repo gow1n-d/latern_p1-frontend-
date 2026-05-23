@@ -142,6 +142,7 @@ export default function PaperEditor() {
   const [wordCount, setWordCount] = useState(0);
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Modal states
   const [showValidation, setShowValidation] = useState(false);
@@ -166,6 +167,15 @@ export default function PaperEditor() {
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
   const [showAuthorModal, setShowAuthorModal] = useState(false);
   const [showDiagramGenerator, setShowDiagramGenerator] = useState(false);
+  const [exportState, setExportState] = useState<{
+    active: boolean;
+    step: number;
+    format: string;
+    paperTitle: string;
+    ready?: boolean;
+    blob?: Blob;
+    ext?: string;
+  } | null>(null);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -230,6 +240,90 @@ export default function PaperEditor() {
       return updated;
     });
   }, [activeSection, autoSave]);
+
+  const applyFormatting = useCallback((formatType: "bold" | "italic" | "underline" | "align" | "list" | "quote" | "code") => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+
+    let formatted = "";
+    let cursorOffset = 0;
+
+    switch (formatType) {
+      case "bold":
+        formatted = `**${selectedText}**`;
+        cursorOffset = selectedText ? 0 : 2;
+        break;
+      case "italic":
+        formatted = `*${selectedText}*`;
+        cursorOffset = selectedText ? 0 : 1;
+        break;
+      case "underline":
+        formatted = `<u>${selectedText}</u>`;
+        cursorOffset = selectedText ? 0 : 4;
+        break;
+      case "align":
+        formatted = `<p align="left">${selectedText}</p>`;
+        cursorOffset = selectedText ? 0 : 16;
+        break;
+      case "list":
+        if (selectedText.includes("\n")) {
+          formatted = selectedText.split("\n").map(line => line.startsWith("- ") ? line : `- ${line}`).join("\n");
+        } else {
+          formatted = `- ${selectedText}`;
+        }
+        break;
+      case "quote":
+        if (selectedText.includes("\n")) {
+          formatted = selectedText.split("\n").map(line => line.startsWith("> ") ? line : `> ${line}`).join("\n");
+        } else {
+          formatted = `> ${selectedText}`;
+        }
+        break;
+      case "code":
+        if (selectedText.includes("\n")) {
+          formatted = `\`\`\`\n${selectedText}\n\`\`\``;
+          cursorOffset = selectedText ? 0 : 4;
+        } else {
+          formatted = `\`${selectedText}\``;
+          cursorOffset = selectedText ? 0 : 1;
+        }
+        break;
+    }
+
+    const newContent = text.substring(0, start) + formatted + text.substring(end);
+    updateContent(newContent);
+
+    // Re-focus and set selection
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + formatted.length - cursorOffset;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  }, [activeSection, updateContent]);
+
+  const handleTextareaKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key.toLowerCase()) {
+        case "b":
+          e.preventDefault();
+          applyFormatting("bold");
+          break;
+        case "i":
+          e.preventDefault();
+          applyFormatting("italic");
+          break;
+        case "u":
+          e.preventDefault();
+          applyFormatting("underline");
+          break;
+      }
+    }
+  }, [applyFormatting]);
 
   const handleManualSave = async () => {
     if (!paperId) return;
@@ -404,32 +498,96 @@ export default function PaperEditor() {
 
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToPDF(sections, selectedJournal, title, authorDetails);
     setShowExportMenu(false);
-    toast.success("PDF exported!");
+    setExportState({ active: true, step: 1, format: "PDF", paperTitle: title });
+    try {
+      const pdfBlob = await exportToPDF(sections, selectedJournal, title, authorDetails, (step) => {
+        setExportState((prev) => prev ? { ...prev, step } : null);
+      });
+      setExportState({
+        active: true,
+        step: 5,
+        format: "PDF",
+        paperTitle: title,
+        ready: true,
+        blob: pdfBlob,
+        ext: "pdf"
+      });
+      toast.success("PDF compilation complete!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export PDF.");
+      setExportState(null);
+    }
   };
 
   const handleExportLaTeX = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToLaTeX(sections, selectedJournal, title, authorDetails);
     setShowExportMenu(false);
-    toast.success("LaTeX exported!");
+    setExportState({ active: true, step: 1, format: "LaTeX (.tex)", paperTitle: title });
+    
+    setTimeout(() => {
+      setExportState(prev => prev ? { ...prev, step: 2 } : null);
+      setTimeout(() => {
+        setExportState(prev => prev ? { ...prev, step: 3 } : null);
+        setTimeout(() => {
+          setExportState(prev => prev ? { ...prev, step: 4 } : null);
+          exportToLaTeX(sections, selectedJournal, title, authorDetails);
+          toast.success("LaTeX exported successfully!");
+          setTimeout(() => {
+            setExportState(null);
+          }, 600);
+        }, 200);
+      }, 200);
+    }, 200);
   };
 
   const handleExportText = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToText(sections, title);
     setShowExportMenu(false);
-    toast.success("Text exported!");
+    setExportState({ active: true, step: 1, format: "Text (.txt)", paperTitle: title });
+    
+    setTimeout(() => {
+      setExportState(prev => prev ? { ...prev, step: 2 } : null);
+      setTimeout(() => {
+        setExportState(prev => prev ? { ...prev, step: 3 } : null);
+        setTimeout(() => {
+          setExportState(prev => prev ? { ...prev, step: 4 } : null);
+          exportToText(sections, title);
+          toast.success("Text exported successfully!");
+          setTimeout(() => {
+            setExportState(null);
+          }, 600);
+        }, 200);
+      }, 200);
+    }, 200);
   };
 
-  const handleExportWord = () => {
+  const handleExportWord = async () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
-    exportToWord(sections, selectedJournal, title, authorDetails);
     setShowExportMenu(false);
-    toast.success("Word document exported!");
+    setExportState({ active: true, step: 1, format: "Word (.doc)", paperTitle: title });
+    try {
+      const wordBlob = await exportToWord(sections, selectedJournal, title, authorDetails, (step) => {
+        setExportState((prev) => prev ? { ...prev, step } : null);
+      });
+      setExportState({
+        active: true,
+        step: 5,
+        format: "Word (.doc)",
+        paperTitle: title,
+        ready: true,
+        blob: wordBlob,
+        ext: "doc"
+      });
+      toast.success("Word document compilation complete!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export Word document.");
+      setExportState(null);
+    }
   };
 
   const copySection = () => {
@@ -969,8 +1127,21 @@ export default function PaperEditor() {
         {/* Toolbar */}
         <div className="border-b border-border bg-card px-4 sm:px-6 py-2 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1">
-            {[Bold, Italic, Underline, AlignLeft, List, Quote, Type].map((Icon, i) => (
-              <button key={i} className="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            {[
+              { Icon: Bold, type: "bold" as const, title: "Bold (Ctrl+B)" },
+              { Icon: Italic, type: "italic" as const, title: "Italic (Ctrl+I)" },
+              { Icon: Underline, type: "underline" as const, title: "Underline (Ctrl+U)" },
+              { Icon: AlignLeft, type: "align" as const, title: "Align Left" },
+              { Icon: List, type: "list" as const, title: "Bullet List" },
+              { Icon: Quote, type: "quote" as const, title: "Blockquote" },
+              { Icon: Type, type: "code" as const, title: "Monospace Code" }
+            ].map(({ Icon, type, title }, i) => (
+              <button
+                key={i}
+                onClick={() => applyFormatting(type)}
+                className="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title={title}
+              >
                 <Icon className="h-4 w-4" />
               </button>
             ))}
@@ -1063,6 +1234,8 @@ export default function PaperEditor() {
                     )}
                   </div>
                   <textarea
+                    ref={textareaRef}
+                    onKeyDown={handleTextareaKeyDown}
                     className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
                     placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
                     value={currentSection?.content || ""}
@@ -1504,12 +1677,187 @@ export default function PaperEditor() {
           setSectionDiagrams(prev => ({ ...prev, [sec]: data }));
           // Persist diagram on the section so it appears in Paper View & survives reload
           setSections(prev => {
-            const updated = prev.map(s => s.id === sec ? { ...s, diagram: data } : s);
+            const updated = prev.map(s => {
+              if (s.id === sec) {
+                let newContent = s.content;
+                if (data.type === "mermaid" && data.code) {
+                  // Replace existing mermaid block if there is one, otherwise append
+                  if (newContent.includes("```mermaid")) {
+                    newContent = newContent.replace(/```mermaid[\s\S]*?```/g, `\`\`\`mermaid\n${data.code}\n\`\`\``);
+                  } else {
+                    newContent = newContent.trim() + `\n\n\`\`\`mermaid\n${data.code}\n\`\`\`\n\n`;
+                  }
+                } else if (data.type === "image" && data.imageData) {
+                  // Append markdown image if not already present
+                  const imgMarkdown = `![${data.caption || "Section Diagram"}](${data.imageData})`;
+                  if (newContent.includes("![")) {
+                    newContent = newContent.replace(/!\[.*?\]\(.*?\)/g, imgMarkdown);
+                  } else {
+                    newContent = newContent.trim() + `\n\n${imgMarkdown}\n\n`;
+                  }
+                }
+                return { ...s, content: newContent, diagram: data };
+              }
+              return s;
+            });
             autoSave(updated);
             return updated;
           });
         }}
       />
+
+      {/* Premium Glassmorphic Export Overlay */}
+      <AnimatePresence>
+        {exportState?.active && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-card/90 border border-border/80 shadow-2xl rounded-2xl max-w-md w-full p-8 text-center relative overflow-hidden"
+              style={{ backdropFilter: "blur(12px)" }}
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+            >
+              {/* Premium Background Ambient Glow */}
+              <div className="absolute -top-24 -left-24 w-48 h-48 bg-accent/20 rounded-full blur-3xl animate-pulse" />
+              <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl" />
+
+              {/* Conditionally Rendered Header / Loader */}
+              {exportState.ready ? (
+                <div className="flex justify-center mb-6 relative">
+                  <div className="w-20 h-20 rounded-full bg-success/20 border-4 border-success/40 flex items-center justify-center relative overflow-hidden animate-bounce">
+                    <Check className="h-10 w-10 text-success stroke-[3]" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-center mb-6 relative">
+                  <div className="w-20 h-20 rounded-full border-4 border-muted flex items-center justify-center relative overflow-hidden">
+                    <div className="absolute inset-0 rounded-full border-4 border-t-accent border-r-accent animate-spin" />
+                    <FileText className="h-8 w-8 text-accent animate-bounce" />
+                  </div>
+                </div>
+              )}
+
+              <h3 className="font-display text-xl font-bold text-foreground mb-1">
+                {exportState.ready ? "Compilation Successful! 🎉" : "Compiling Document"}
+              </h3>
+              <p className="text-xs text-muted-foreground mb-6">
+                {exportState.ready ? (
+                  "Your document is formatted and ready for download"
+                ) : (
+                  <>
+                    Exporting{" "}
+                    <span className="font-semibold text-accent">
+                      {exportState.paperTitle && exportState.paperTitle.length > 60
+                        ? `${exportState.paperTitle.slice(0, 60).trim()}...`
+                        : (exportState.paperTitle || "research paper")}
+                    </span>{" "}
+                    as {exportState.format}
+                  </>
+                )}
+              </p>
+
+              {/* Conditionally Rendered Body */}
+              {exportState.ready ? (
+                <div className="space-y-4">
+                  <Button
+                    variant="hero"
+                    className="w-full gap-2 bg-success hover:bg-success/90 text-white shadow-lg shadow-success/20 py-6 text-base font-bold animate-pulse"
+                    onClick={() => {
+                      if (exportState.blob && exportState.ext) {
+                        const compiledBlob = exportState.blob;
+                        const url = URL.createObjectURL(compiledBlob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        const filename = (exportState.paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
+                        a.download = `${filename}.${exportState.ext}`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }
+                      setExportState(null);
+                    }}
+                  >
+                    <Download className="h-5 w-5" /> Save File to Device
+                  </Button>
+                  <button
+                    onClick={() => setExportState(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                  >
+                    Close Window
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Glowing Premium Progress Bar */}
+                  <div className="max-w-xs mx-auto text-left">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-semibold">
+                      <span>Download Progress</span>
+                      <span className="text-accent">{exportState.step * 25}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden relative border border-border/50">
+                      <motion.div
+                        className="h-full rounded-full bg-gradient-to-r from-accent to-emerald-500 shadow-lg shadow-accent/20"
+                        initial={{ width: "0%" }}
+                        animate={{ width: `${exportState.step * 25}%` }}
+                        transition={{ duration: 0.3, ease: "easeOut" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Progress Milestones */}
+                  <div className="space-y-3.5 text-left max-w-xs mx-auto">
+                  {[
+                    { id: 1, text: "Analyzing document structure" },
+                    { id: 2, text: "Rendering diagrams & images" },
+                    { id: 3, text: "Laying out pages & formatting" },
+                    { id: 4, text: "Generating and saving file" }
+                  ].map((s) => {
+                    const isDone = exportState.step > s.id;
+                    const isActive = exportState.step === s.id;
+                    return (
+                      <div key={s.id} className="flex items-center gap-3.5 transition-all duration-300">
+                        {isDone ? (
+                          <div className="h-5 w-5 rounded-full bg-success/20 flex items-center justify-center text-success shrink-0 scale-110 transition-transform duration-300">
+                            <Check className="h-3 w-3 stroke-[3]" />
+                          </div>
+                        ) : isActive ? (
+                          <div className="h-5 w-5 rounded-full bg-accent/20 flex items-center justify-center text-accent shrink-0 relative">
+                            <div className="absolute inset-0 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                            <span className="text-[10px] font-bold">{s.id}</span>
+                          </div>
+                        ) : (
+                          <div className="h-5 w-5 rounded-full border border-border flex items-center justify-center text-muted-foreground text-[10px] font-semibold shrink-0">
+                            {s.id}
+                          </div>
+                        )}
+                        <span className={`text-sm transition-colors duration-300 ${
+                          isDone ? "text-success/90 font-medium" :
+                          isActive ? "text-foreground font-semibold" :
+                          "text-muted-foreground/60"
+                        }`}>
+                          {s.text}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                </div>
+              )}
+
+              {/* Premium Footer Animation */}
+              <div className="mt-8 pt-4 border-t border-border/50 text-[10px] text-muted-foreground/50 tracking-wider uppercase font-semibold">
+                PaperForge Scientific Compiler
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

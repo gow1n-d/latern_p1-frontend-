@@ -8,8 +8,20 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    watch: {
+      usePolling: true,
+    },
     hmr: {
-      overlay: false,
+      clientPort: 8080,
+      overlay: true,
+    },
+    proxy: {
+      "/api/nvidia": {
+        target: "https://integrate.api.nvidia.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/nvidia/, ""),
+        secure: true,
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

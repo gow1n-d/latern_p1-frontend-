@@ -665,11 +665,30 @@ function parseSections(raw: Json): PaperSection[] {
   return DEFAULT_SECTIONS;
 }
 
+const MOCK_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+function getMockPapers(): Paper[] {
+  const data = localStorage.getItem("pf_mock_papers");
+  if (!data) return [];
+  try {
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+function saveMockPapers(papers: Paper[]) {
+  localStorage.setItem("pf_mock_papers", JSON.stringify(papers));
+}
+
 export function usePapers() {
   const { user } = useAuth();
   return useQuery({
     queryKey: ["papers", user?.id],
     queryFn: async () => {
+      if (user?.id === MOCK_USER_ID) {
+        return getMockPapers();
+      }
       const { data, error } = await supabase
         .from("papers")
         .select("*")
@@ -687,6 +706,10 @@ export function usePaper(id: string | undefined) {
     queryKey: ["paper", id],
     queryFn: async () => {
       if (!id || id === "new") return null;
+      if (user?.id === MOCK_USER_ID) {
+        const mock = getMockPapers().find(p => p.id === id);
+        return mock || null;
+      }
       const { data, error } = await supabase.from("papers").select("*").eq("id", id).single();
       if (error) throw error;
       return { ...data, sections: parseSections(data.sections) } as Paper;
@@ -704,6 +727,27 @@ export function useCreatePaper() {
       const sections = formatSections.map((s) =>
         s.id === "title" ? { ...s, content: params.title } : s
       );
+      
+      if (user?.id === MOCK_USER_ID) {
+        const newPaper: Paper = {
+          id: Math.random().toString(36).substring(2, 15),
+          user_id: MOCK_USER_ID,
+          title: params.title,
+          journal: params.journal,
+          domain: params.domain || "",
+          methodology_summary: params.methodology_summary || "",
+          results_summary: params.results_summary || "",
+          sections,
+          status: "draft",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        const papers = getMockPapers();
+        papers.unshift(newPaper);
+        saveMockPapers(papers);
+        return newPaper;
+      }
+
       const { data, error } = await supabase
         .from("papers")
         .insert({
@@ -726,14 +770,33 @@ export function useCreatePaper() {
 }
 
 export function useUpdatePaper() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: { id: string; updates: Partial<Pick<Paper, "title" | "journal" | "status" | "domain" | "methodology_summary" | "results_summary" | "sections">> }) => {
+      if (user?.id === MOCK_USER_ID) {
+        const papers = getMockPapers();
+        const idx = papers.findIndex(p => p.id === params.id);
+        if (idx !== -1) {
+          const updated = {
+            ...papers[idx],
+            ...params.updates,
+            updated_at: new Date().toISOString()
+          } as Paper;
+          if (params.updates.sections) {
+            const titleSection = params.updates.sections.find((s) => s.id === "title");
+            if (titleSection?.content) updated.title = titleSection.content;
+          }
+          papers[idx] = updated;
+          saveMockPapers(papers);
+        }
+        return;
+      }
+
       const updateData: Record<string, unknown> = { ...params.updates };
       if (params.updates.sections) {
         updateData.sections = params.updates.sections as unknown as Json;
       }
-      // Keep title in sync with title section
       if (params.updates.sections) {
         const titleSection = params.updates.sections.find((s) => s.id === "title");
         if (titleSection?.content) updateData.title = titleSection.content;
@@ -749,9 +812,16 @@ export function useUpdatePaper() {
 }
 
 export function useDeletePaper() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (user?.id === MOCK_USER_ID) {
+        const papers = getMockPapers();
+        const filtered = papers.filter(p => p.id !== id);
+        saveMockPapers(filtered);
+        return;
+      }
       const { error } = await supabase.from("papers").delete().eq("id", id);
       if (error) throw error;
     },

@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import type { PaperSection } from "@/hooks/usePapers";
+import mermaid from "mermaid";
 
 type AuthorInfo = {
   authorNames?: string[];
@@ -100,13 +101,155 @@ function toRoman(n: number): string {
 
 const NON_BODY = ["title", "abstract", "keywords", "references", "works-cited", "bibliography", "reference-list", "ccs-concepts", "highlights"];
 
-// ── PDF line height: converts pt fontSize + lineSpacing ratio to mm advance ──
+// Global image/diagram PNG cache
+const pngCache = new Map<string, string>();
+
+// ── PDF line height ──
 function lineH(fontSize: number, lineSpacing: number): number {
-  // 1 pt = 0.3528 mm; lineSpacing is a multiplier (e.g. 1.12)
   return fontSize * 0.3528 * lineSpacing;
 }
 
-export function exportToPDF(sections: PaperSection[], journal: string, paperTitle: string, author?: AuthorInfo) {
+// ── SVG/Image Helper Functions ──
+function extractMermaidFromContent(content: string): string | null {
+  const match = content.match(/```mermaid\s*([\s\S]*?)```/i);
+  return match ? match[1].trim() : null;
+}
+
+async function getDiagramForSection(s: PaperSection): Promise<{ type: "mermaid" | "image"; svg?: string; imageData?: string; caption: string } | null> {
+  if (s.diagram) return s.diagram;
+  
+  const mermaidCode = extractMermaidFromContent(s.content);
+  if (mermaidCode) {
+    try {
+      const uniqueId = `export-inline-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
+      const { svg } = await mermaid.render(uniqueId, mermaidCode);
+      return { type: "mermaid", svg, caption: `Figure for ${s.label}` };
+    } catch (e) {
+      console.error("Failed to render inline export mermaid:", e);
+    }
+  }
+  
+  const imgMatch = s.content.match(/!\[(.*?)\]\((.*?)\)/);
+  if (imgMatch) {
+    return { type: "image", imageData: imgMatch[2], caption: imgMatch[1] || `Figure for ${s.label}` };
+  }
+  
+  return null;
+}
+
+function svgToPng(svgString: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const cleanSvg = svgString.trim();
+      const blob = new Blob([cleanSvg], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const widthMatch = cleanSvg.match(/width=["'](\d+(?:\.\d+)?)px["']/i) || cleanSvg.match(/width=["'](\d+(?:\.\d+)?)["']/i);
+        const heightMatch = cleanSvg.match(/height=["'](\d+(?:\.\d+)?)px["']/i) || cleanSvg.match(/height=["'](\d+(?:\.\d+)?)["']/i);
+        const w = widthMatch ? parseFloat(widthMatch[1]) : 800;
+        const h = heightMatch ? parseFloat(heightMatch[1]) : 600;
+        
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const pngData = canvas.toDataURL("image/png");
+          URL.revokeObjectURL(url);
+          resolve(pngData);
+        } else {
+          URL.revokeObjectURL(url);
+          reject(new Error("Could not get canvas context"));
+        }
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(e);
+      };
+      img.src = url;
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function imageUrlToPng(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Image load timed out after 1500ms"));
+    }, 1500);
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      clearTimeout(timer);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || img.width || 800;
+      canvas.height = img.naturalHeight || img.height || 600;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } else {
+        reject(new Error("Canvas context failed"));
+      }
+    };
+    img.onerror = (e) => {
+      clearTimeout(timer);
+      reject(e);
+    };
+    img.src = url;
+  });
+}
+
+async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string }): Promise<string | null> {
+  const cacheKey = diagram.type === "mermaid" ? diagram.svg || "" : diagram.imageData || "";
+  if (!cacheKey) return null;
+
+  if (pngCache.has(cacheKey)) {
+    return pngCache.get(cacheKey)!;
+  }
+
+  let pngData: string | null = null;
+  if (diagram.type === "mermaid" && diagram.svg) {
+    try {
+      pngData = await svgToPng(diagram.svg);
+    } catch (e) {
+      console.error("Failed to convert Mermaid SVG to PNG:", e);
+    }
+  } else if (diagram.type === "image" && diagram.imageData) {
+    if (diagram.imageData.startsWith("data:")) {
+      pngData = diagram.imageData;
+    } else {
+      try {
+        pngData = await imageUrlToPng(diagram.imageData);
+      } catch (e) {
+        console.error("Failed to convert image URL to PNG:", e);
+      }
+    }
+  }
+
+  if (pngData) {
+    pngCache.set(cacheKey, pngData);
+  }
+  return pngData;
+}
+
+// ── PDF export ──
+export async function exportToPDF(
+  sections: PaperSection[],
+  journal: string,
+  paperTitle: string,
+  author?: AuthorInfo,
+  onProgress?: (step: number) => void
+): Promise<Blob> {
+  onProgress?.(1); // Step 1: Analyzing document structure
   const config = getConfig(journal);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pw = doc.internal.pageSize.getWidth();  // 210
@@ -224,10 +367,24 @@ export function exportToPDF(sections: PaperSection[], journal: string, paperTitl
   const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.content.trim());
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
+  onProgress?.(2); // Step 2: Rendering diagrams & images
+  // Pre-load all body section diagrams in parallel (concurrently) for fast loading
+  const diagramPngs: Record<string, string | null> = {};
+  const diagramInfos: Record<string, any> = {};
+  const promises = bodySections.map(async (s) => {
+    const diag = await getDiagramForSection(s);
+    if (diag) {
+      diagramInfos[s.id] = diag;
+      diagramPngs[s.id] = await ensurePng(diag);
+    }
+  });
+  await Promise.all(promises);
+
+  onProgress?.(3); // Step 3: Laying out pages
   if (config.columns === 2) {
-    renderTwoColumn(doc, bodySections, refSection, config, margin, pw, ph, y);
+    renderTwoColumn(doc, bodySections, refSection, config, margin, pw, ph, y, diagramPngs, diagramInfos);
   } else {
-    renderSingleColumn(doc, bodySections, refSection, config, margin, contentW, pw, ph, y);
+    renderSingleColumn(doc, bodySections, refSection, config, margin, contentW, pw, ph, y, diagramPngs, diagramInfos);
   }
 
   // ── Footer on every page ──
@@ -242,13 +399,20 @@ export function exportToPDF(sections: PaperSection[], journal: string, paperTitl
     doc.setTextColor(0);
   }
 
+  onProgress?.(4); // Step 4: Generating & saving file
   const filename = (paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
-  doc.save(`${filename}.pdf`);
+  try {
+    doc.save(`${filename}.pdf`);
+  } catch (err) {
+    console.error("Auto-download failed or blocked by browser gesture restriction", err);
+  }
+  return doc.output("blob");
 }
 
 function renderSingleColumn(
   doc: jsPDF, bodySections: PaperSection[], refSection: PaperSection | undefined,
-  config: JournalConfig, margin: number, contentW: number, pw: number, ph: number, y: number
+  config: JournalConfig, margin: number, contentW: number, pw: number, ph: number, y: number,
+  diagramPngs: Record<string, string | null>, diagramInfos: Record<string, any>
 ) {
   const lh = lineH(config.bodySize, config.lineSpacing);
   const headLhVal = lineH(config.headingSize, 1.2);
@@ -259,7 +423,6 @@ function renderSingleColumn(
   let sectionNum = 0;
   for (const section of bodySections) {
     sectionNum++;
-    // Ensure heading + at least 2 lines of body stay together (no orphan headings)
     const minKeepTogether = headLhVal + 1 + lh * 2;
     checkSpace(minKeepTogether);
 
@@ -275,7 +438,8 @@ function renderSingleColumn(
     // Body paragraphs
     doc.setFontSize(config.bodySize);
     doc.setFont("times", "normal");
-    const paras = section.content.split("\n").filter(Boolean);
+    const cleanContent = section.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+    const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
     for (let pi = 0; pi < paras.length; pi++) {
       const indent = pi > 0 ? 5 : 0;
       const lines = doc.splitTextToSize(paras[pi], contentW - indent);
@@ -284,9 +448,35 @@ function renderSingleColumn(
         doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
         y += lh;
       }
-      // Keep at least 2 lines of a paragraph together (avoid widows)
-      y += 1;
+      y += 1.5;
     }
+
+    // Add diagram in layout flow
+    const pngData = diagramPngs[section.id];
+    const diagram = diagramInfos[section.id];
+    if (pngData && diagram) {
+      const imgW = contentW * 0.85;
+      const imgH = imgW * 0.55;
+      checkSpace(imgH + 10);
+      try {
+        doc.addImage(pngData, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
+        y += imgH + 2.5;
+        
+        doc.setFontSize(config.bodySize - 1);
+        doc.setFont("times", "italic");
+        const captionText = `Fig. ${sectionNum}. ${diagram.caption || `${section.label} diagram`}`;
+        const captionLines = doc.splitTextToSize(captionText, contentW);
+        for (const line of captionLines) {
+          checkSpace(lh);
+          doc.text(line, pw / 2, y, { align: "center" });
+          y += lh;
+        }
+        y += 2;
+      } catch (imgErr) {
+        console.error("jsPDF addImage error:", imgErr);
+      }
+    }
+
     y += 2;
   }
 
@@ -307,9 +497,8 @@ function renderSingleColumn(
       const cleaned = r.replace(/^\[\d+\]\s*/, "");
       const refText = `[${i + 1}] ${cleaned}`;
       const wrapped = doc.splitTextToSize(refText, contentW - 5);
-      // Keep entire reference entry together
       const refEntryH = wrapped.length * refLh + 0.5;
-      checkSpace(Math.min(refEntryH, lh * 3)); // at least keep first 3 lines together
+      checkSpace(Math.min(refEntryH, lh * 3));
       for (let li = 0; li < wrapped.length; li++) {
         checkSpace(refLh);
         doc.text(wrapped[li], margin + (li === 0 ? 0 : 5), y);
@@ -322,7 +511,8 @@ function renderSingleColumn(
 
 function renderTwoColumn(
   doc: jsPDF, bodySections: PaperSection[], refSection: PaperSection | undefined,
-  config: JournalConfig, margin: number, pw: number, ph: number, startY: number
+  config: JournalConfig, margin: number, pw: number, ph: number, startY: number,
+  diagramPngs: Record<string, string | null>, diagramInfos: Record<string, any>
 ) {
   const gap = 5;
   const colW = (pw - margin * 2 - gap) / 2;
@@ -330,8 +520,12 @@ function renderTwoColumn(
   const headLhVal = lineH(config.headingSize, 1.2);
   const bottomLimit = ph - margin;
 
-  // Collect all text blocks into a flat list of "items"
-  type Item = { type: "heading"; text: string } | { type: "body"; text: string } | { type: "gap"; h: number };
+  type Item = 
+    | { type: "heading"; text: string } 
+    | { type: "body"; text: string } 
+    | { type: "gap"; h: number }
+    | { type: "diagram"; diagram: any; sectionId: string };
+
   const items: Item[] = [];
 
   let sectionNum = 0;
@@ -342,13 +536,19 @@ function renderTwoColumn(
     const headText = config.headingStyle === "roman" ? section.label.toUpperCase() : section.label;
     items.push({ type: "gap", h: 3 });
     items.push({ type: "heading", text: `${prefix}${headText}` });
-    const paras = section.content.split("\n").filter(Boolean);
+    
+    const cleanContent = section.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+    const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
     for (const p of paras) {
       items.push({ type: "body", text: p });
     }
+
+    const diagram = diagramInfos[section.id];
+    if (diagram) {
+      items.push({ type: "diagram", diagram, sectionId: section.id });
+    }
   }
 
-  // References
   if (refSection?.content.trim()) {
     items.push({ type: "gap", h: 3 });
     items.push({ type: "heading", text: config.headingStyle === "roman" ? "REFERENCES" : "References" });
@@ -359,10 +559,9 @@ function renderTwoColumn(
     });
   }
 
-  // Render items flowing across two columns
-  let col = 0; // 0 = left, 1 = right
+  let col = 0;
   let y = startY;
-  const colYStart = [startY, startY]; // track where each column starts on current page
+  const colYStart = [startY, startY];
 
   const getX = () => margin + col * (colW + gap);
 
@@ -383,10 +582,10 @@ function renderTwoColumn(
     if (y + needed > bottomLimit) nextCol();
   };
 
+  let figIndex = 0;
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
     if (item.type === "gap") {
-      // Don't add gap if it would push us near bottom with nothing after
       if (y + item.h < bottomLimit) {
         y += item.h;
       }
@@ -394,7 +593,6 @@ function renderTwoColumn(
     }
 
     if (item.type === "heading") {
-      // Keep heading + at least 2 lines of following body together
       const followBodyH = lh * 2;
       checkCol(headLhVal + 0.5 + followBodyH);
       doc.setFontSize(config.headingSize);
@@ -404,11 +602,38 @@ function renderTwoColumn(
       continue;
     }
 
+    if (item.type === "diagram") {
+      const pngData = diagramPngs[item.sectionId];
+      if (pngData) {
+        figIndex++;
+        const imgW = colW;
+        const imgH = colW * 0.58;
+        checkCol(imgH + 10);
+        try {
+          doc.addImage(pngData, "PNG", getX(), y, imgW, imgH);
+          y += imgH + 2;
+          
+          doc.setFontSize(config.bodySize - 1);
+          doc.setFont("times", "italic");
+          const captionText = `Fig. ${figIndex}. ${item.diagram.caption || "Section diagram"}`;
+          const captionLines = doc.splitTextToSize(captionText, colW);
+          for (const line of captionLines) {
+            checkCol(lh);
+            doc.text(line, getX() + colW / 2, y, { align: "center" });
+            y += lh;
+          }
+          y += 1.5;
+        } catch (imgErr) {
+          console.error("jsPDF addImage twoColumn error:", imgErr);
+        }
+      }
+      continue;
+    }
+
     // body text
     doc.setFontSize(config.bodySize);
     doc.setFont("times", "normal");
     const lines = doc.splitTextToSize(item.text, colW);
-    // Keep at least first 2 lines of a paragraph together
     if (lines.length >= 2) {
       checkCol(lh * 2);
     }
@@ -425,13 +650,35 @@ function renderTwoColumn(
 export function exportToText(sections: PaperSection[], paperTitle: string) {
   const text = sections
     .filter((s) => s.content.trim())
-    .map((s) => `\n${"=".repeat(60)}\n${s.label.toUpperCase()}\n${"=".repeat(60)}\n\n${s.content}`)
+    .map((s) => {
+      let cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+      let sectionText = `\n${"=".repeat(60)}\n${s.label.toUpperCase()}\n${"=".repeat(60)}\n\n${cleanContent}`;
+      
+      const mermaidCode = extractMermaidFromContent(s.content);
+      if (s.diagram) {
+        if (s.diagram.type === "mermaid" && s.diagram.code) {
+          sectionText += `\n\n[DIAGRAM: ${s.diagram.caption}]\n\`\`\`mermaid\n${s.diagram.code}\n\`\`\`\n`;
+        } else {
+          sectionText += `\n\n[IMAGE DIAGRAM: ${s.diagram.caption}]\nSource: ${s.diagram.imageData?.slice(0, 150)}...\n`;
+        }
+      } else if (mermaidCode) {
+        sectionText += `\n\n[DIAGRAM]\n\`\`\`mermaid\n${mermaidCode}\n\`\`\`\n`;
+      }
+      return sectionText;
+    })
     .join("\n\n");
   downloadBlob(new Blob([text], { type: "text/plain" }), paperTitle, "txt");
 }
 
 // ── Word export ──
-export function exportToWord(sections: PaperSection[], journal: string, paperTitle: string, author?: AuthorInfo) {
+export async function exportToWord(
+  sections: PaperSection[],
+  journal: string,
+  paperTitle: string,
+  author?: AuthorInfo,
+  onProgress?: (step: number) => void
+): Promise<Blob> {
+  onProgress?.(1); // Step 1: Analyzing document structure
   const config = getConfig(journal);
   const title = (sections.find((s) => s.id === "title")?.content || "Untitled").split("\n")[0];
   const abstractSec = sections.find((s) => s.id === "abstract");
@@ -454,27 +701,53 @@ export function exportToWord(sections: PaperSection[], journal: string, paperTit
     return `${prefix}${text}`;
   };
 
+  onProgress?.(2); // Step 2: Rendering diagrams & images
+  // Pre-load all diagram PNGs in parallel (concurrently) for fast loading
+  const diagramPngs: Record<string, string | null> = {};
+  const diagramInfos: Record<string, any> = {};
+  const promises = bodySections.map(async (s) => {
+    const diag = await getDiagramForSection(s);
+    if (diag) {
+      diagramInfos[s.id] = diag;
+      diagramPngs[s.id] = await ensurePng(diag);
+    }
+  });
+  await Promise.all(promises);
+
+  onProgress?.(3); // Step 3: Laying out pages
   const htmlContent = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><title>${title}</title>
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+  </w:WordDocument>
+</xml>
+<![endif]-->
 <style>
-  @page { margin: ${config.columns === 2 ? '0.6in' : '0.8in'}; }
+  @page { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-paper-source: 0; }
+  @page Section1 { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-paper-source: 0; }
+  div.Section1 { page: Section1; }
   body { font-family: 'Times New Roman', Times, serif; font-size: ${config.bodySize}pt; line-height: ${bodyLineHeight}; margin: 0; }
   h1 { font-size: ${config.titleSize * 0.75}pt; text-align: center; margin-bottom: 4pt; font-family: 'Times New Roman'; line-height: 1.18; }
   h2 { font-size: ${config.headingSize}pt; font-weight: bold; margin-top: 10pt; margin-bottom: 2pt; font-family: 'Times New Roman'; }
-  p { text-align: justify; margin-bottom: 2pt; margin-top: 0; }
+  p { text-align: justify; margin-bottom: 2.5pt; margin-top: 0; }
   .author { text-align: center; font-style: italic; font-size: 10pt; margin-bottom: 2pt; }
   .affil { text-align: center; font-style: italic; font-size: 8.5pt; color: #333; margin-bottom: 2pt; }
   .email { text-align: center; font-family: 'Courier New'; font-size: 8pt; color: #444; margin-bottom: 8pt; }
   .journal-header { text-align: center; font-size: 7pt; letter-spacing: 2.5px; color: #888; text-transform: uppercase; font-family: Helvetica, Arial, sans-serif; }
   .abstract-label { font-weight: bold; font-size: ${config.headingSize}pt; margin-bottom: 2pt; }
   .kw-label { font-weight: bold; font-style: italic; }
-  .ref { font-size: ${Math.max(config.bodySize - 1, 8)}pt; padding-left: 14pt; text-indent: -14pt; line-height: 1.25; margin-bottom: 1pt; }
+  .ref { font-size: ${Math.max(config.bodySize - 1, 8.5)}pt; padding-left: 14pt; text-indent: -14pt; line-height: 1.25; margin-bottom: 1pt; }
   .content-body { ${columnStyle} }
-  .body-para { text-indent: 14pt; }
+  .body-para { text-indent: 0.25in; }
   .body-para-first { text-indent: 0; }
 </style></head>
 <body>
+  <div class="Section1">
   ${config.journalHeader ? `<p class="journal-header">${config.journalHeader}</p><hr style="border:none;border-top:0.4px solid #ccc;"/>` : ""}
   <h1>${escapeHtml(title)}</h1>
   ${names.length > 0 ? `<p class="author">${escapeHtml(names.join(", "))}</p>` : ""}
@@ -486,16 +759,37 @@ export function exportToWord(sections: PaperSection[], journal: string, paperTit
   <hr style="border:none;border-top:0.3px solid #ccc;"/>
   <div class="content-body">
   ${bodySections.map((s) => {
-    const paras = s.content.split("\n").filter(Boolean);
+    const cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+    const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
     const parasHtml = paras.map((p, i) => `<p class="${i === 0 ? 'body-para-first' : 'body-para'}">${escapeHtml(p)}</p>`).join("");
-    return `<h2>${escapeHtml(makeHeading(s.label))}</h2>${parasHtml}`;
+    
+    let diagramHtml = "";
+    const imgData = diagramPngs[s.id] || diagramInfos[s.id]?.imageData;
+    if (imgData) {
+      diagramHtml = `
+        <div style="text-align: center; margin: 12pt 0; page-break-inside: avoid;">
+          <img src="${imgData}" alt="Diagram for ${escapeHtml(s.label)}" style="max-width: 85%; height: auto; display: block; margin: 0 auto; border: 0.5pt solid #ddd;" />
+          <p style="text-align: center; font-style: italic; font-size: ${config.bodySize - 1}pt; margin-top: 4pt; color: #444;">Fig. ${escapeHtml(s.label)}: Generated diagram representation.</p>
+        </div>
+      `;
+    }
+
+    return `<h2>${escapeHtml(makeHeading(s.label))}</h2>${parasHtml}${diagramHtml}`;
   }).join("")}
   ${refSection?.content.trim() ? `<h2>${config.headingStyle === "roman" ? "REFERENCES" : "References"}</h2>${refSection.content.split("\n").filter(Boolean).map((r, i) => `<p class="ref">[${i + 1}] ${escapeHtml(r.replace(/^\[\d+\]\s*/, ""))}</p>`).join("")}` : ""}
+  </div>
   </div>
   <div style="text-align:center;font-size:6.5pt;color:#bbb;font-family:Helvetica,Arial,sans-serif;margin-top:24pt;">Manuscript — PaperForge</div>
 </body></html>`;
 
-  downloadBlob(new Blob(["\ufeff" + htmlContent], { type: "application/msword" }), paperTitle, "doc");
+  onProgress?.(4); // Step 4: Generating & saving file
+  const wordBlob = new Blob(["\ufeff" + htmlContent], { type: "application/msword" });
+  try {
+    downloadBlob(wordBlob, paperTitle, "doc");
+  } catch (err) {
+    console.error("Auto-download failed or blocked by browser gesture restriction", err);
+  }
+  return wordBlob;
 }
 
 // ── LaTeX export ──
@@ -536,7 +830,19 @@ ${escapeLatex(abstract)}
 `;
 
   for (const section of bodySections) {
-    latex += `\\section{${escapeLatex(section.label)}}\n${escapeLatex(section.content)}\n\n`;
+    const cleanContent = section.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+    latex += `\\section{${escapeLatex(section.label)}}\n${escapeLatex(cleanContent)}\n\n`;
+
+    const mermaidCode = extractMermaidFromContent(section.content);
+    if (section.diagram || mermaidCode) {
+      latex += `\\begin{figure}[htbp]\n`;
+      latex += `\\centering\n`;
+      latex += `\\includegraphics[width=0.85\\textwidth]{diagram-${section.id}.png}\n`;
+      const caption = section.diagram?.caption || `Generated diagram for ${section.label}`;
+      latex += `\\caption{${escapeLatex(caption)}}\n`;
+      latex += `\\label{fig:${section.id}}\n`;
+      latex += `\\end{figure}\n\n`;
+    }
   }
 
   if (refSection?.content.trim()) {
@@ -574,3 +880,5 @@ function downloadBlob(blob: Blob, title: string, ext: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+
