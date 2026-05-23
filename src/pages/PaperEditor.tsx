@@ -173,6 +173,12 @@ export default function PaperEditor() {
   useEffect(() => {
     if (existingPaper) {
       setSections(existingPaper.sections);
+      // Hydrate diagrams from persisted sections
+      const diagMap: Record<string, any> = {};
+      for (const s of existingPaper.sections) {
+        if (s.diagram) diagMap[s.id] = s.diagram;
+      }
+      setSectionDiagrams(diagMap);
       setSelectedJournal(existingPaper.journal);
       setPaperMeta({
         domain: existingPaper.domain || "",
