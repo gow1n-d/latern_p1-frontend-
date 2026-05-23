@@ -126,12 +126,22 @@ export async function validateFormat(
   return resp.json();
 }
 
+export type PlagiarismMatch = {
+  phrase: string;
+  url: string;
+  title: string;
+  source: string;
+  snippet: string;
+  similarity: number;
+};
+
 export type PlagiarismResult = {
   success: boolean;
   originality_score: number;
   ai_detection_score: number;
   overall_risk: string;
-  sections: { name: string; originality: number; ai_likelihood: number; flags: string[]; suggestions: string[] }[];
+  total_sources_matched?: number;
+  sections: { name: string; originality: number; ai_likelihood: number; flags: string[]; suggestions: string[]; matches?: PlagiarismMatch[] }[];
   common_phrases: string[];
   recommendations: string[];
 };
