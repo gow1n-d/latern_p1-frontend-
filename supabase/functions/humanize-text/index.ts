@@ -42,8 +42,14 @@ async function callLovableGateway(messages: any[], stream: boolean, temperature:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { content, journal } = await req.json();
+    const body = await readJsonWithLimit(req, 80_000);
+    if (body instanceof Response) return body;
+    const { content, journal } = body;
+    if ((content?.length ?? 0) > MAX_FIELD) return tooLarge("Content too long");
 
     const systemPrompt = `You are an expert academic writing humanizer. Rewrite the given text so it reads like a real human researcher wrote it.
 
