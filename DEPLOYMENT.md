@@ -37,9 +37,9 @@ When deploying to your hosting provider, you must configure the following **Envi
 
 | Key | Value / Source | Purpose |
 | :--- | :--- | :--- |
-| `VITE_SUPABASE_URL` | `https://fudnetxikhjyekvvddix.supabase.co` | Supabase API connection endpoint |
+| `VITE_SUPABASE_URL` | `https://owiqyxmrosfmarnbajtd.supabase.co` | Supabase API connection endpoint |
 | `VITE_SUPABASE_ANON_KEY` | *Your Publishable Anon Key* | Public access token for database and auth |
-| `VITE_SUPABASE_PROJECT_ID` | `fudnetxikhjyekvvddix` | Supabase unique project reference |
+| `VITE_SUPABASE_PROJECT_ID` | `owiqyxmrosfmarnbajtd` | Supabase unique project reference |
 
 ### 3. Deploying to Vercel (Recommended)
 1. Import your repository into the **Vercel Dashboard**.
@@ -73,8 +73,8 @@ cd backend
 # Log in to CLI
 supabase login
 
-# Link CLI to your remote project (uses Project ID: fudnetxikhjyekvvddix)
-supabase link --project-ref fudnetxikhjyekvvddix
+# Link CLI to your remote project (uses Project ID: owiqyxmrosfmarnbajtd)
+supabase link --project-ref owiqyxmrosfmarnbajtd
 ```
 *Note: You will be prompted to enter your Database password which was set when creating the project.*
 
@@ -94,13 +94,13 @@ npm run deploy:backend
 
 To deploy an individual function separately:
 ```bash
-cd backend && supabase functions deploy generate-section --project-ref fudnetxikhjyekvvddix
+cd backend && supabase functions deploy generate-section --project-ref owiqyxmrosfmarnbajtd
 ```
 
 ### 5. Setting API Secrets (Gemini Keys) on Supabase
 The AI edge functions require your Gemini API Key to generate content and diagrams. Set this secret on the Supabase Backend securely using the CLI:
 ```bash
-cd backend && supabase secrets set GEMINI_API_KEY="AIzaSyA67JjBR9Hz0MvKJKT63XhlDD7XXbd6pvc" --project-ref fudnetxikhjyekvvddix
+cd backend && supabase secrets set GEMINI_API_KEY="AIzaSyA67JjBR9Hz0MvKJKT63XhlDD7XXbd6pvc" --project-ref owiqyxmrosfmarnbajtd
 ```
 Once set, the live functions will immediately read the key from the Supabase Vault securely.
 
