@@ -1502,6 +1502,12 @@ export default function PaperEditor() {
         results_summary={paperMeta.results_summary}
         onDiagramGenerated={(sec, data) => {
           setSectionDiagrams(prev => ({ ...prev, [sec]: data }));
+          // Persist diagram on the section so it appears in Paper View & survives reload
+          setSections(prev => {
+            const updated = prev.map(s => s.id === sec ? { ...s, diagram: data } : s);
+            autoSave(updated);
+            return updated;
+          });
         }}
       />
     </div>
