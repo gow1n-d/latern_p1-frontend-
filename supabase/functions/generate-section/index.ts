@@ -76,8 +76,16 @@ async function callLovableGateway(messages: any[], stream: boolean, temperature:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { section, title, domain, methodology, results_summary, journal, existing_content } = await req.json();
+    const body = await readJsonWithLimit(req, 100_000);
+    if (body instanceof Response) return body;
+    const { section, title, domain, methodology, results_summary, journal, existing_content } = body;
+    for (const [name, v] of Object.entries({ section, title, domain, methodology, results_summary, journal, existing_content })) {
+      if (typeof v === "string" && v.length > MAX_FIELD) return tooLarge(`Field "${name}" exceeds ${MAX_FIELD} chars`);
+    }
 
     const sectionGuide = sectionPrompts[section] || `Write the "${section}" section for an academic research paper. Use formal academic writing style. Use ONLY information provided below.`;
 
