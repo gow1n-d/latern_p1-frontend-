@@ -1,5 +1,12 @@
+import { supabase } from "@/integrations/supabase/client";
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+async function authHeader(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return `Bearer ${data.session?.access_token ?? SUPABASE_KEY}`;
+}
 
 type StreamOptions = {
   onDelta: (text: string) => void;
