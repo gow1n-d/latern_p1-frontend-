@@ -1305,6 +1305,21 @@ export default function PaperEditor() {
                                   ))}
                                 </ul>
                               )}
+                              {sec.matches && sec.matches.length > 0 && (
+                                <div className="mt-2 space-y-1.5">
+                                  <div className="text-xs font-semibold text-foreground">Matched sources:</div>
+                                  {sec.matches.map((m, k) => (
+                                    <a key={k} href={m.url} target="_blank" rel="noopener noreferrer" className="block rounded border border-border bg-muted/30 p-2 hover:bg-muted/60 transition-colors">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs font-medium text-foreground line-clamp-1">{m.title || m.url}</span>
+                                        <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 font-mono">{m.similarity}%</span>
+                                      </div>
+                                      <div className="text-[10px] text-muted-foreground mt-0.5">{m.source} • {new URL(m.url).hostname}</div>
+                                      <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">"{m.snippet}"</div>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
