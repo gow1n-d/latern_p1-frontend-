@@ -3,10 +3,19 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Json } from "@/integrations/supabase/types";
 
+export type SectionDiagram = {
+  type: "mermaid" | "image";
+  code?: string;
+  imageData?: string;
+  svg?: string;
+  caption: string;
+};
+
 export type PaperSection = {
   id: string;
   label: string;
   content: string;
+  diagram?: SectionDiagram;
 };
 
 export type Paper = {

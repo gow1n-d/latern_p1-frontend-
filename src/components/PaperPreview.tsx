@@ -117,11 +117,37 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
       }}>{p}</p>
     ));
 
+  let figureNum = 0;
+  const renderDiagram = (s: PaperSection) => {
+    const d = s.diagram;
+    if (!d) return null;
+    figureNum++;
+    return (
+      <figure style={{ margin: "6px 0", breakInside: "avoid-column" as const, textAlign: "center" as const }}>
+        {d.type === "mermaid" && d.svg ? (
+          <div style={{ display: "flex", justifyContent: "center" }} dangerouslySetInnerHTML={{ __html: d.svg }} />
+        ) : d.type === "image" && d.imageData ? (
+          <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", height: "auto", borderRadius: 2 }} />
+        ) : null}
+        <figcaption style={{
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: config.bodySize - 0.5,
+          fontStyle: "italic" as const,
+          marginTop: 3,
+          textAlign: "center" as const,
+        }}>
+          Fig. {figureNum}. {d.caption}
+        </figcaption>
+      </figure>
+    );
+  };
+
   // Build body + references
   const bodyElements = bodySections.map((s) => (
     <div key={s.id} style={{ breakInside: "avoid-column" as const }}>
       {makeHeading(s.label)}
       {paragraphs(s.content)}
+      {renderDiagram(s)}
     </div>
   ));
 
