@@ -51,8 +51,15 @@ async function callAI(messages: any[], temperature: number): Promise<string | nu
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { query, journal, paperTitle } = await req.json();
+    const body = await readJsonWithLimit(req, 20_000);
+    if (body instanceof Response) return body;
+    const { query, journal, paperTitle } = body;
+    if ((query?.length ?? 0) > 500) return tooLarge("Query too long (max 500 chars)");
+    if ((paperTitle?.length ?? 0) > 500) return tooLarge("paperTitle too long");
 
     if (!query?.trim()) {
       return new Response(JSON.stringify({ error: "Search query is required" }), {
