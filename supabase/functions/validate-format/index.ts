@@ -25,8 +25,15 @@ const journalRules: Record<string, {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { sections, journal } = await req.json() as { sections: Section[]; journal: string };
+    const body = await readJsonWithLimit(req, 400_000);
+    if (body instanceof Response) return body;
+    const { sections, journal } = body as { sections: Section[]; journal: string };
+    if (!Array.isArray(sections)) return tooLarge("sections must be an array");
+    if (sections.length > 30) return tooLarge("Too many sections");
     const rules = journalRules[journal];
     const issues: { type: "error" | "warning" | "info"; message: string }[] = [];
 
