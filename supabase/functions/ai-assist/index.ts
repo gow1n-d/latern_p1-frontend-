@@ -42,8 +42,15 @@ async function callLovableGateway(messages: any[], stream: boolean, temperature:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { instruction, content, journal } = await req.json();
+    const body = await readJsonWithLimit(req, 80_000);
+    if (body instanceof Response) return body;
+    const { instruction, content, journal } = body;
+    if ((instruction?.length ?? 0) > 2_000) return tooLarge("Instruction too long");
+    if ((content?.length ?? 0) > MAX_FIELD) return tooLarge("Content too long");
 
     const systemPrompt = `You are an expert academic writing assistant for ${journal || "IEEE"} journal papers.
 
