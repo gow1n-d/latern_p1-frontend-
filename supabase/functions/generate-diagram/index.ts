@@ -163,8 +163,16 @@ Requirements:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   try {
-    const { title, domain, section, methodology, results_summary, description, diagram_type, force_type } = await req.json();
+    const body = await readJsonWithLimit(req, 60_000);
+    if (body instanceof Response) return body;
+    const { title, domain, section, methodology, results_summary, description, diagram_type, force_type } = body;
+    for (const [name, v] of Object.entries({ title, domain, section, methodology, results_summary, description, diagram_type })) {
+      if (typeof v === "string" && v.length > MAX_FIELD) return tooLarge(`Field "${name}" exceeds ${MAX_FIELD} chars`);
+    }
 
     if (!title) {
       return new Response(JSON.stringify({ error: "Paper title is required" }), {
