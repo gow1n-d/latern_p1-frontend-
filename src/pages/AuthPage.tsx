@@ -64,7 +64,7 @@ export default function AuthPage() {
     if (result.error) {
       toast.error(result.error);
     } else if (isSignUp && !isSuperAdminBypass) {
-      toast.success("Account created! You can now sign in.");
+      toast.success("Account created! Please check your email to verify your account before signing in.");
       setIsSignUp(false);
     } else {
       toast.success("Welcome back!");
