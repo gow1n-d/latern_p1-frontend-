@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
-import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent } from "@/lib/export";
+import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
 import DiagramGenerator from "@/components/DiagramGenerator";
@@ -602,6 +602,56 @@ export default function PaperEditor() {
     }
   };
 
+  const handleExportPDFFast = async () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    setShowExportMenu(false);
+    setExportState({ active: true, step: 1, format: "PDF (Fast)", paperTitle: title });
+    try {
+      const pdfBlob = await exportToPDF(sections, selectedJournal, title, authorDetails, (step) => {
+        setExportState((prev) => prev ? { ...prev, step } : null);
+      }, true);
+      setExportState({
+        active: true,
+        step: 5,
+        format: "PDF (Fast)",
+        paperTitle: title,
+        ready: true,
+        blob: pdfBlob,
+        ext: "pdf"
+      });
+      toast.success("Fast PDF export complete!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export PDF.");
+      setExportState(null);
+    }
+  };
+
+  const handleExportWordFast = async () => {
+    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    setShowExportMenu(false);
+    setExportState({ active: true, step: 1, format: "Word (Fast)", paperTitle: title });
+    try {
+      const wordBlob = await exportToWord(sections, selectedJournal, title, authorDetails, (step) => {
+        setExportState((prev) => prev ? { ...prev, step } : null);
+      }, true);
+      setExportState({
+        active: true,
+        step: 5,
+        format: "Word (Fast)",
+        paperTitle: title,
+        ready: true,
+        blob: wordBlob,
+        ext: "doc"
+      });
+      toast.success("Fast Word export complete!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export Word document.");
+      setExportState(null);
+    }
+  };
+
   const copySection = () => {
     if (currentSection?.content) {
       navigator.clipboard.writeText(currentSection.content);
@@ -1170,11 +1220,15 @@ export default function PaperEditor() {
                 <Download className="h-3 w-3" />
               </Button>
               {showExportMenu && (
-                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
+                <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
                   <button onClick={handleExportPDF} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
+                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
                   <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
                   <button onClick={handleExportText} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
-                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
+                  <div className="border-t border-border my-1" />
+                  <p className="px-4 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Fast (no diagrams)</p>
+                  <button onClick={handleExportPDFFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast PDF</button>
+                  <button onClick={handleExportWordFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast Word</button>
                 </div>
               )}
             </div>
@@ -1263,11 +1317,15 @@ export default function PaperEditor() {
                 <Download className="h-4 w-4" /> Export
               </Button>
               {showExportMenu && (
-                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
+                <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
                   <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
+                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word (.doc)</button>
                   <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
                   <button onClick={handleExportText} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
-                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word (.doc)</button>
+                  <div className="border-t border-border my-1" />
+                  <p className="px-4 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Fast (no diagrams)</p>
+                  <button onClick={handleExportPDFFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast PDF</button>
+                  <button onClick={handleExportWordFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast Word</button>
                 </div>
               )}
             </div>
@@ -1877,6 +1935,8 @@ export default function PaperEditor() {
         results_summary={paperMeta.results_summary}
         onDiagramGenerated={(sec, data) => {
           setSectionDiagrams(prev => ({ ...prev, [sec]: data }));
+          // Eagerly pre-cache the PNG for instant export later
+          preCacheDiagramPng(data);
           // Persist diagram on the section so it appears in Paper View & survives reload
           setSections(prev => {
             const updated = prev.map(s => {

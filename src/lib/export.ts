@@ -101,8 +101,17 @@ function toRoman(n: number): string {
 
 const NON_BODY = ["title", "abstract", "keywords", "references", "works-cited", "bibliography", "reference-list", "ccs-concepts", "highlights"];
 
-// Global image/diagram PNG cache
+// Global image/diagram PNG cache — shared across exports
 const pngCache = new Map<string, string>();
+
+/** Pre-cache a diagram PNG so exports are instant. Call this when a diagram is first generated. */
+export async function preCacheDiagramPng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string; code?: string }): Promise<void> {
+  try {
+    await ensurePng(diagram);
+  } catch {
+    // Silently ignore — cache miss at export time will retry
+  }
+}
 
 // ── PDF line height ──
 function lineH(fontSize: number, lineSpacing: number): number {
@@ -148,8 +157,8 @@ function svgToPng(svgString: string): Promise<string> {
         const canvas = document.createElement("canvas");
         const widthMatch = cleanSvg.match(/width=["'](\d+(?:\.\d+)?)px["']/i) || cleanSvg.match(/width=["'](\d+(?:\.\d+)?)["']/i);
         const heightMatch = cleanSvg.match(/height=["'](\d+(?:\.\d+)?)px["']/i) || cleanSvg.match(/height=["'](\d+(?:\.\d+)?)["']/i);
-        const w = widthMatch ? parseFloat(widthMatch[1]) : 800;
-        const h = heightMatch ? parseFloat(heightMatch[1]) : 600;
+        const w = Math.min(widthMatch ? parseFloat(widthMatch[1]) : 600, 800);
+        const h = Math.min(heightMatch ? parseFloat(heightMatch[1]) : 400, 600);
         
         canvas.width = w;
         canvas.height = h;
@@ -247,7 +256,8 @@ export async function exportToPDF(
   journal: string,
   paperTitle: string,
   author?: AuthorInfo,
-  onProgress?: (step: number) => void
+  onProgress?: (step: number) => void,
+  skipDiagrams?: boolean
 ): Promise<Blob> {
   onProgress?.(1); // Step 1: Analyzing document structure
   const config = getConfig(journal);
@@ -368,17 +378,18 @@ export async function exportToPDF(
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
   onProgress?.(2); // Step 2: Rendering diagrams & images
-  // Pre-load all body section diagrams in parallel (concurrently) for fast loading
   const diagramPngs: Record<string, string | null> = {};
   const diagramInfos: Record<string, any> = {};
-  const promises = bodySections.map(async (s) => {
-    const diag = await getDiagramForSection(s);
-    if (diag) {
-      diagramInfos[s.id] = diag;
-      diagramPngs[s.id] = await ensurePng(diag);
-    }
-  });
-  await Promise.all(promises);
+  if (!skipDiagrams) {
+    const promises = bodySections.map(async (s) => {
+      const diag = await getDiagramForSection(s);
+      if (diag) {
+        diagramInfos[s.id] = diag;
+        diagramPngs[s.id] = await ensurePng(diag);
+      }
+    });
+    await Promise.all(promises);
+  }
 
   onProgress?.(3); // Step 3: Laying out pages
   if (config.columns === 2) {
@@ -674,7 +685,8 @@ export async function exportToWord(
   journal: string,
   paperTitle: string,
   author?: AuthorInfo,
-  onProgress?: (step: number) => void
+  onProgress?: (step: number) => void,
+  skipDiagrams?: boolean
 ): Promise<Blob> {
   onProgress?.(1); // Step 1: Analyzing document structure
   const config = getConfig(journal);
@@ -700,17 +712,18 @@ export async function exportToWord(
   };
 
   onProgress?.(2); // Step 2: Rendering diagrams & images
-  // Pre-load all diagram PNGs in parallel (concurrently) for fast loading
   const diagramPngs: Record<string, string | null> = {};
   const diagramInfos: Record<string, any> = {};
-  const promises = bodySections.map(async (s) => {
-    const diag = await getDiagramForSection(s);
-    if (diag) {
-      diagramInfos[s.id] = diag;
-      diagramPngs[s.id] = await ensurePng(diag);
-    }
-  });
-  await Promise.all(promises);
+  if (!skipDiagrams) {
+    const promises = bodySections.map(async (s) => {
+      const diag = await getDiagramForSection(s);
+      if (diag) {
+        diagramInfos[s.id] = diag;
+        diagramPngs[s.id] = await ensurePng(diag);
+      }
+    });
+    await Promise.all(promises);
+  }
 
   onProgress?.(3); // Step 3: Laying out pages
   const htmlContent = `
