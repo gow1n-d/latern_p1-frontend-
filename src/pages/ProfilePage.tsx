@@ -58,7 +58,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-6">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
             <BookOpen className="h-6 w-6 text-accent" />
             <span className="font-display text-xl font-bold text-foreground">PaperForge</span>
@@ -69,9 +69,9 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-10 max-w-2xl">
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 max-w-2xl">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="font-display text-3xl font-bold text-foreground mb-2">Profile & Settings</h1>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground mb-2">Profile & Settings</h1>
           <p className="text-muted-foreground mb-10">Manage your account and preferences</p>
 
           {/* Profile Card */}

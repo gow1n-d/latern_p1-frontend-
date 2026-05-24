@@ -1,7 +1,8 @@
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Sparkles, Shield, FileText, ArrowRight, CheckCircle2, Zap, Search, Quote,
-  Star, Users, Award, BarChart3, Check, Crown
+  Star, Users, Award, BarChart3, Check, Crown, Menu, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -46,12 +47,13 @@ const plans = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
-        <div className="container mx-auto flex h-16 items-center justify-between px-6">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-accent" />
             <span className="font-display text-xl font-bold text-foreground">PaperForge</span>
@@ -62,29 +64,59 @@ export default function LandingPage() {
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
             <a href="#testimonials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Reviews</a>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/auth")}>Sign In</Button>
-            <Button variant="hero" size="sm" onClick={() => navigate("/auth")}>Get Started Free</Button>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="hidden sm:inline-flex">Sign In</Button>
+            <Button variant="hero" size="sm" onClick={() => navigate("/auth")} className="hidden sm:inline-flex">Get Started Free</Button>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden rounded-lg p-2 text-foreground hover:bg-muted transition-colors"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+        {/* Mobile menu */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              className="md:hidden border-t border-border/50 bg-background/95 backdrop-blur-lg"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="container mx-auto px-4 py-4 flex flex-col gap-3">
+                <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Features</a>
+                <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">How It Works</a>
+                <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Pricing</a>
+                <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Reviews</a>
+                <div className="flex gap-2 pt-2 border-t border-border/50">
+                  <Button variant="ghost" size="sm" onClick={() => { navigate("/auth"); setMobileMenuOpen(false); }} className="flex-1">Sign In</Button>
+                  <Button variant="hero" size="sm" onClick={() => { navigate("/auth"); setMobileMenuOpen(false); }} className="flex-1">Get Started</Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-hero pt-32 pb-24">
+      <section className="relative overflow-hidden bg-hero pt-24 pb-16 sm:pt-32 sm:pb-24">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-10 h-64 w-64 rounded-full bg-accent blur-[100px]" />
           <div className="absolute bottom-10 right-20 h-48 w-48 rounded-full bg-accent blur-[80px]" />
         </div>
-        <div className="container relative mx-auto px-6 text-center">
+        <div className="container relative mx-auto px-4 sm:px-6 text-center">
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-sm text-accent">
               <Sparkles className="h-4 w-4" /> AI-Powered Academic Writing Platform
             </div>
-            <h1 className="mx-auto max-w-4xl font-display text-5xl font-bold leading-tight text-primary-foreground md:text-7xl">
+            <h1 className="mx-auto max-w-4xl font-display text-3xl sm:text-5xl font-bold leading-tight text-primary-foreground md:text-7xl">
               Build Publication-Ready
               <span className="text-gradient-gold block">Research Papers</span>
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-primary-foreground/70">
+            <p className="mx-auto mt-4 sm:mt-6 max-w-2xl text-base sm:text-lg text-primary-foreground/70 px-2">
               Select your journal. Input your research. Let AI generate, format, and validate your paper
               for IEEE, Springer, Elsevier, and more — ready to submit.
             </p>
@@ -108,12 +140,12 @@ export default function LandingPage() {
       </section>
 
       {/* Stats */}
-      <section className="py-12 border-b border-border">
-        <div className="container mx-auto px-6">
+      <section className="py-8 sm:py-12 border-b border-border">
+        <div className="container mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, i) => (
               <motion.div key={stat.label} className="text-center" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-                <div className="font-display text-3xl md:text-4xl font-bold text-foreground">{stat.value}</div>
+                <div className="font-display text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">{stat.value}</div>
                 <div className="text-sm text-muted-foreground mt-1">{stat.label}</div>
               </motion.div>
             ))}
@@ -122,11 +154,11 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section id="features" className="py-24">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="font-display text-4xl font-bold text-foreground">Everything You Need to Publish</h2>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">From idea to submission — our AI pipeline handles every step of the research paper workflow.</p>
+      <section id="features" className="py-16 sm:py-24">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="font-display text-2xl sm:text-4xl font-bold text-foreground">Everything You Need to Publish</h2>
+            <p className="mt-3 sm:mt-4 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto px-2">From idea to submission — our AI pipeline handles every step of the research paper workflow.</p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {features.map((f, i) => (
@@ -144,15 +176,15 @@ export default function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="py-24 bg-muted/50">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="font-display text-4xl font-bold text-foreground">How It Works</h2>
-            <p className="mt-4 text-lg text-muted-foreground">Five steps from idea to submission-ready paper</p>
+      <section id="how-it-works" className="py-16 sm:py-24 bg-muted/50">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="font-display text-2xl sm:text-4xl font-bold text-foreground">How It Works</h2>
+            <p className="mt-3 sm:mt-4 text-base sm:text-lg text-muted-foreground">Five steps from idea to submission-ready paper</p>
           </div>
-          <div className="grid gap-8 md:grid-cols-5">
+          <div className="grid gap-6 sm:gap-8 grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
             {steps.map((s, i) => (
-              <motion.div key={s.step} className="text-center" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.12 }}>
+              <motion.div key={s.step} className={`text-center ${i === 4 ? "col-span-2 sm:col-span-1" : ""}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.12 }}>
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-foreground font-bold text-lg">{s.step}</div>
                 <h3 className="font-display text-lg font-semibold text-foreground">{s.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">{s.desc}</p>
@@ -163,11 +195,11 @@ export default function LandingPage() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-24">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="font-display text-4xl font-bold text-foreground">Trusted by Researchers</h2>
-            <p className="mt-4 text-lg text-muted-foreground">See what academics say about PaperForge</p>
+      <section id="testimonials" className="py-16 sm:py-24">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="font-display text-2xl sm:text-4xl font-bold text-foreground">Trusted by Researchers</h2>
+            <p className="mt-3 sm:mt-4 text-base sm:text-lg text-muted-foreground">See what academics say about PaperForge</p>
           </div>
           <div className="grid gap-6 md:grid-cols-3">
             {testimonials.map((t, i) => (
@@ -190,11 +222,11 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-24 bg-muted/50">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="font-display text-4xl font-bold text-foreground">Simple, Transparent Pricing</h2>
-            <p className="mt-4 text-lg text-muted-foreground">Start free. Upgrade when you need more.</p>
+      <section id="pricing" className="py-16 sm:py-24 bg-muted/50">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="font-display text-2xl sm:text-4xl font-bold text-foreground">Simple, Transparent Pricing</h2>
+            <p className="mt-3 sm:mt-4 text-base sm:text-lg text-muted-foreground">Start free. Upgrade when you need more.</p>
           </div>
           <div className="grid gap-6 md:grid-cols-3 max-w-4xl mx-auto">
             {plans.map((plan, i) => (
@@ -224,17 +256,17 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-24">
-        <div className="container mx-auto px-6">
-          <div className="rounded-2xl bg-hero p-12 text-center md:p-20">
-            <h2 className="font-display text-4xl font-bold text-primary-foreground md:text-5xl">Ready to Write Your Next Paper?</h2>
-            <p className="mx-auto mt-4 max-w-xl text-primary-foreground/70 text-lg">Join thousands of researchers who publish faster with AI-powered paper generation.</p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button variant="hero" size="lg" className="text-base px-8 py-6" onClick={() => navigate("/auth")}>
+      <section className="py-16 sm:py-24">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="rounded-2xl bg-hero p-8 sm:p-12 text-center md:p-20">
+            <h2 className="font-display text-2xl sm:text-4xl font-bold text-primary-foreground md:text-5xl">Ready to Write Your Next Paper?</h2>
+            <p className="mx-auto mt-3 sm:mt-4 max-w-xl text-primary-foreground/70 text-base sm:text-lg">Join thousands of researchers who publish faster with AI-powered paper generation.</p>
+            <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Button variant="hero" size="lg" className="text-base px-8 py-6 w-full sm:w-auto" onClick={() => navigate("/auth")}>
                 Start Free <ArrowRight className="ml-1 h-5 w-5" />
               </Button>
             </div>
-            <div className="mt-6 flex items-center justify-center gap-6 text-sm text-primary-foreground/60">
+            <div className="mt-4 sm:mt-6 flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs sm:text-sm text-primary-foreground/60">
               <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> No credit card</span>
               <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> 3 free papers</span>
               <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> All templates</span>
@@ -244,9 +276,9 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-12">
-        <div className="container mx-auto px-6">
-          <div className="grid gap-8 md:grid-cols-4 mb-8">
+      <footer className="border-t border-border py-8 sm:py-12">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="grid gap-8 grid-cols-2 md:grid-cols-4 mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <BookOpen className="h-5 w-5 text-accent" />

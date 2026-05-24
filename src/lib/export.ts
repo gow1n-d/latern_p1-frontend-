@@ -158,7 +158,7 @@ function svgToPng(svgString: string): Promise<string> {
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const pngData = canvas.toDataURL("image/png");
+          const pngData = canvas.toDataURL("image/png", 0.92);
           URL.revokeObjectURL(url);
           resolve(pngData);
         } else {
@@ -180,8 +180,8 @@ function svgToPng(svgString: string): Promise<string> {
 function imageUrlToPng(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error("Image load timed out after 1500ms"));
-    }, 1500);
+      reject(new Error("Image load timed out after 800ms"));
+    }, 800);
 
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -400,12 +400,6 @@ export async function exportToPDF(
   }
 
   onProgress?.(4); // Step 4: Generating & saving file
-  const filename = (paperTitle || "research-paper").replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "-").toLowerCase();
-  try {
-    doc.save(`${filename}.pdf`);
-  } catch (err) {
-    console.error("Auto-download failed or blocked by browser gesture restriction", err);
-  }
   return doc.output("blob");
 }
 
@@ -646,9 +640,9 @@ function renderTwoColumn(
   }
 }
 
-// ── Text export ──
-export function exportToText(sections: PaperSection[], paperTitle: string) {
-  const text = sections
+// ── Text export (builds string only — no download) ──
+export function buildTextContent(sections: PaperSection[]): string {
+  return sections
     .filter((s) => s.content.trim())
     .map((s) => {
       let cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
@@ -667,6 +661,10 @@ export function exportToText(sections: PaperSection[], paperTitle: string) {
       return sectionText;
     })
     .join("\n\n");
+}
+
+export function exportToText(sections: PaperSection[], paperTitle: string) {
+  const text = buildTextContent(sections);
   downloadBlob(new Blob([text], { type: "text/plain" }), paperTitle, "txt");
 }
 
@@ -784,16 +782,11 @@ export async function exportToWord(
 
   onProgress?.(4); // Step 4: Generating & saving file
   const wordBlob = new Blob(["\ufeff" + htmlContent], { type: "application/msword" });
-  try {
-    downloadBlob(wordBlob, paperTitle, "doc");
-  } catch (err) {
-    console.error("Auto-download failed or blocked by browser gesture restriction", err);
-  }
   return wordBlob;
 }
 
-// ── LaTeX export ──
-export function exportToLaTeX(sections: PaperSection[], journal: string, paperTitle: string, author?: AuthorInfo) {
+// ── LaTeX export (builds string only — no download) ──
+export function buildLaTeXContent(sections: PaperSection[], journal: string, paperTitle: string, author?: AuthorInfo): string {
   const title = (sections.find((s) => s.id === "title")?.content || "Untitled").split("\n")[0];
   const abstract = sections.find((s) => s.id === "abstract")?.content || "";
   const keywords = sections.find((s) => s.id === "keywords")?.content || "";
@@ -855,7 +848,11 @@ ${escapeLatex(abstract)}
   }
 
   latex += `\\end{document}\n`;
+  return latex;
+}
 
+export function exportToLaTeX(sections: PaperSection[], journal: string, paperTitle: string, author?: AuthorInfo) {
+  const latex = buildLaTeXContent(sections, journal, paperTitle, author);
   downloadBlob(new Blob([latex], { type: "text/plain" }), paperTitle, "tex");
 }
 

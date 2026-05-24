@@ -73,7 +73,7 @@ export default function PricingPage() {
     <div className="min-h-screen bg-background">
       {/* Nav */}
       <nav className="border-b border-border bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-6">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
             <BookOpen className="h-6 w-6 text-accent" />
             <span className="font-display text-xl font-bold text-foreground">PaperForge</span>
@@ -82,10 +82,10 @@ export default function PricingPage() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-6 py-16">
+      <div className="container mx-auto px-4 sm:px-6 py-10 sm:py-16">
         <div className="text-center mb-16">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-4xl md:text-5xl font-bold text-foreground mb-4">
+            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4">
               Choose Your Plan
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -98,7 +98,7 @@ export default function PricingPage() {
           {plans.map((plan, i) => (
             <motion.div
               key={plan.id}
-              className={`relative rounded-2xl border p-8 flex flex-col ${
+              className={`relative rounded-2xl border p-6 sm:p-8 flex flex-col ${
                 plan.popular
                   ? "border-accent bg-card shadow-gold scale-[1.02]"
                   : "border-border bg-card shadow-card"
@@ -147,7 +147,7 @@ export default function PricingPage() {
 
         {/* FAQ */}
         <div className="max-w-3xl mx-auto mt-20">
-          <h2 className="font-display text-3xl font-bold text-foreground text-center mb-10">
+          <h2 className="font-display text-2xl sm:text-3xl font-bold text-foreground text-center mb-8 sm:mb-10">
             Frequently Asked Questions
           </h2>
           <div className="space-y-4">

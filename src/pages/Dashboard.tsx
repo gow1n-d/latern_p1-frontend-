@@ -99,7 +99,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-6">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
             <BookOpen className="h-6 w-6 text-accent" />
             <span className="font-display text-xl font-bold text-foreground">PaperForge</span>
@@ -140,15 +140,15 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-10">
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="font-display text-3xl font-bold text-foreground">My Papers</h1>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground">My Papers</h1>
             <p className="text-muted-foreground mt-1">
               {papers?.length || 0} paper{(papers?.length || 0) !== 1 ? "s" : ""} in your library
             </p>
           </div>
-          <Button variant="hero" onClick={() => navigate("/editor/new")} className="gap-2">
+          <Button variant="hero" onClick={() => navigate("/editor/new")} className="gap-2 w-full sm:w-auto">
             <Plus className="h-4 w-4" /> New Paper
           </Button>
         </div>
@@ -170,7 +170,7 @@ export default function Dashboard() {
             <Loader2 className="h-8 w-8 animate-spin text-accent" />
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <motion.button
               onClick={() => navigate("/editor/new")}
               className="group flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-card/50 p-8 text-center transition-all hover:border-accent/50 hover:bg-accent/5 min-h-[220px]"

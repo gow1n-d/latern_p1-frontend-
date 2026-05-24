@@ -130,4 +130,18 @@
   .shadow-gold {
     box-shadow: var(--shadow-gold);
   }
+
+  /* Mobile utility: safe-area bottom padding for bottom bars */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Scrollbar hiding for horizontal scrollable areas */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

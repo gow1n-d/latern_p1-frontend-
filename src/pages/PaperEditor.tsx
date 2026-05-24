@@ -5,13 +5,13 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2, Image
+  Moon, Sun, Wand2, Image, Menu, ChevronRight, PanelLeftClose
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
-import { exportToPDF, exportToText, exportToLaTeX, exportToWord } from "@/lib/export";
+import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
 import DiagramGenerator from "@/components/DiagramGenerator";
@@ -167,6 +167,8 @@ export default function PaperEditor() {
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
   const [showAuthorModal, setShowAuthorModal] = useState(false);
   const [showDiagramGenerator, setShowDiagramGenerator] = useState(false);
+  const [showMobileSections, setShowMobileSections] = useState(false);
+  const [showMobileActions, setShowMobileActions] = useState(false);
   const [exportState, setExportState] = useState<{
     active: boolean;
     step: number;
@@ -527,42 +529,52 @@ export default function PaperEditor() {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
     setShowExportMenu(false);
     setExportState({ active: true, step: 1, format: "LaTeX (.tex)", paperTitle: title });
-    
-    setTimeout(() => {
-      setExportState(prev => prev ? { ...prev, step: 2 } : null);
-      setTimeout(() => {
-        setExportState(prev => prev ? { ...prev, step: 3 } : null);
-        setTimeout(() => {
-          setExportState(prev => prev ? { ...prev, step: 4 } : null);
-          exportToLaTeX(sections, selectedJournal, title, authorDetails);
-          toast.success("LaTeX exported successfully!");
-          setTimeout(() => {
-            setExportState(null);
-          }, 600);
-        }, 200);
-      }, 200);
-    }, 200);
+
+    // Run synchronously — LaTeX generation is instant, no need for artificial delays
+    requestAnimationFrame(() => {
+      setExportState(prev => prev ? { ...prev, step: 3 } : null);
+      requestAnimationFrame(() => {
+        // Build LaTeX content directly as a blob instead of auto-downloading
+        const latexContent = buildLaTeXContent(sections, selectedJournal, title, authorDetails);
+        const latexBlob = new Blob([latexContent], { type: "text/plain" });
+        setExportState({
+          active: true,
+          step: 5,
+          format: "LaTeX (.tex)",
+          paperTitle: title,
+          ready: true,
+          blob: latexBlob,
+          ext: "tex"
+        });
+        toast.success("LaTeX exported successfully!");
+      });
+    });
   };
 
   const handleExportText = () => {
     const title = sections.find((s) => s.id === "title")?.content || "paper";
     setShowExportMenu(false);
     setExportState({ active: true, step: 1, format: "Text (.txt)", paperTitle: title });
-    
-    setTimeout(() => {
-      setExportState(prev => prev ? { ...prev, step: 2 } : null);
-      setTimeout(() => {
-        setExportState(prev => prev ? { ...prev, step: 3 } : null);
-        setTimeout(() => {
-          setExportState(prev => prev ? { ...prev, step: 4 } : null);
-          exportToText(sections, title);
-          toast.success("Text exported successfully!");
-          setTimeout(() => {
-            setExportState(null);
-          }, 600);
-        }, 200);
-      }, 200);
-    }, 200);
+
+    // Run synchronously — text generation is instant
+    requestAnimationFrame(() => {
+      setExportState(prev => prev ? { ...prev, step: 3 } : null);
+      requestAnimationFrame(() => {
+        // Build text content directly as a blob instead of auto-downloading
+        const textContent = buildTextContent(sections);
+        const textBlob = new Blob([textContent], { type: "text/plain" });
+        setExportState({
+          active: true,
+          step: 5,
+          format: "Text (.txt)",
+          paperTitle: title,
+          ready: true,
+          blob: textBlob,
+          ext: "txt"
+        });
+        toast.success("Text exported successfully!");
+      });
+    });
   };
 
   const handleExportWord = async () => {
@@ -1061,7 +1073,7 @@ export default function PaperEditor() {
   const isBusy = isGenerating || isAssisting || isCompletingAll || isHumanizing;
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex flex-col md:flex-row h-screen h-[100dvh] bg-background overflow-hidden">
       {/* Left sidebar — hidden on mobile */}
       <aside className="hidden md:flex w-64 border-r border-border bg-card flex-col shrink-0">
         <div className="p-4 border-b border-border">
@@ -1123,9 +1135,39 @@ export default function PaperEditor() {
       </aside>
 
       {/* Main editor */}
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Toolbar */}
-        <div className="border-b border-border bg-card px-4 sm:px-6 py-2 flex items-center justify-between flex-wrap gap-2">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Mobile header - only shown on small screens */}
+        <div className="md:hidden flex items-center justify-between border-b border-border bg-card px-3 py-2">
+          <button
+            onClick={() => setShowMobileSections(true)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <Menu className="h-4 w-4" />
+            <span className="font-medium text-foreground truncate max-w-[140px]">{currentSection?.label}</span>
+          </button>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{filledSections}/{sections.length}</span>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleManualSave} disabled={isSaving || !paperId}>
+              <Save className="h-3 w-3" />
+            </Button>
+            <div className="relative">
+              <Button variant="hero" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => setShowExportMenu(!showExportMenu)}>
+                <Download className="h-3 w-3" />
+              </Button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
+                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
+                  <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
+                  <button onClick={handleExportText} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
+                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Toolbar - hidden on mobile */}
+        <div className="hidden md:flex border-b border-border bg-card px-4 sm:px-6 py-2 items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1">
             {[
               { Icon: Bold, type: "bold" as const, title: "Bold (Ctrl+B)" },
@@ -1222,7 +1264,7 @@ export default function PaperEditor() {
           {/* Editor pane — shown in edit and split modes */}
           {(viewMode === "edit" || viewMode === "split") && (
             <div className={`overflow-y-auto ${viewMode === "split" ? "w-1/2 border-r border-border" : "flex-1"}`}>
-              <div className={`mx-auto py-10 px-8 ${viewMode === "split" ? "max-w-none" : "max-w-3xl"}`}>
+              <div className={`mx-auto py-6 px-4 sm:py-10 sm:px-8 ${viewMode === "split" ? "max-w-none" : "max-w-3xl"}`}>
                 <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
@@ -1236,7 +1278,7 @@ export default function PaperEditor() {
                   <textarea
                     ref={textareaRef}
                     onKeyDown={handleTextareaKeyDown}
-                    className="w-full min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-base"
+                    className="w-full min-h-[300px] sm:min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-sm sm:text-base"
                     placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
                     value={currentSection?.content || ""}
                     onChange={(e) => updateContent(e.target.value)}
@@ -1302,7 +1344,7 @@ export default function PaperEditor() {
           <AnimatePresence>
             {showAiPanel && (
               <motion.div
-                className="w-80 border-l border-border bg-card flex flex-col shrink-0"
+                className="w-72 md:w-80 border-l border-border bg-card flex flex-col shrink-0 absolute md:relative right-0 top-0 bottom-0 z-40 shadow-lg md:shadow-none"
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: 320, opacity: 1 }}
                 exit={{ width: 0, opacity: 0 }}
@@ -1357,7 +1399,117 @@ export default function PaperEditor() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Mobile bottom action bar */}
+        <div className="md:hidden border-t border-border bg-card px-2 py-1.5 flex items-center justify-around gap-1 shrink-0 safe-area-bottom">
+          {canGenerate && (
+            <button
+              onClick={handleGenerateSection}
+              disabled={isBusy}
+              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
+            >
+              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              <span className="text-[10px] font-medium">Generate</span>
+            </button>
+          )}
+          <button
+            onClick={handleHumanize}
+            disabled={isBusy}
+            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-emerald-600 hover:bg-emerald-500/10 transition-colors disabled:opacity-40"
+          >
+            {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
+            <span className="text-[10px] font-medium">Humanize</span>
+          </button>
+          <button
+            onClick={() => setShowAiPanel(!showAiPanel)}
+            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors"
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span className="text-[10px] font-medium">AI Assist</span>
+          </button>
+          <button
+            onClick={handleCompleteEntirePaper}
+            disabled={isBusy}
+            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
+          >
+            {isCompletingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            <span className="text-[10px] font-medium">Complete</span>
+          </button>
+          <button
+            onClick={handleValidateFormat}
+            disabled={isValidating}
+            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40"
+          >
+            {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+            <span className="text-[10px] font-medium">Validate</span>
+          </button>
+        </div>
       </main>
+
+      {/* Mobile Section Drawer */}
+      <AnimatePresence>
+        {showMobileSections && (
+          <motion.div
+            className="fixed inset-0 z-50 md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobileSections(false)} />
+            <motion.div
+              className="absolute left-0 top-0 bottom-0 w-72 bg-card border-r border-border flex flex-col"
+              initial={{ x: -288 }}
+              animate={{ x: 0 }}
+              exit={{ x: -288 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            >
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-accent" />
+                  <span className="font-display font-bold text-foreground">Sections</span>
+                </div>
+                <button onClick={() => setShowMobileSections(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="px-4 pt-3 pb-2">
+                <span className={`inline-block rounded-md border px-2.5 py-0.5 text-xs font-semibold ${journalOptions.find((j) => j.id === selectedJournal)?.color || ""}`}>
+                  {journalOptions.find((j) => j.id === selectedJournal)?.name || "Journal"}
+                </span>
+                <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+                  <span>{filledSections}/{sections.length} sections</span>
+                  <span>{wordCount.toLocaleString()} words</span>
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(filledSections / sections.length) * 100}%` }} />
+                </div>
+              </div>
+
+              <nav className="flex-1 overflow-y-auto px-2 py-2">
+                {sections.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => { setActiveSection(s.id); setShowMobileSections(false); }}
+                    className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-left transition-colors mb-0.5 ${
+                      activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
+                    {s.label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="border-t border-border p-3 space-y-2">
+                <button onClick={() => { setShowMobileSections(false); navigate("/dashboard"); }} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+                  <ChevronLeft className="h-4 w-4" /> Dashboard
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Validation Modal */}
       <AnimatePresence>
@@ -1441,20 +1593,20 @@ export default function PaperEditor() {
                   </div>
                 ) : plagiarismResult ? (
                   <div className="space-y-5">
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
                       <div className="rounded-xl border border-border p-4 text-center">
-                        <div className="text-2xl font-bold text-foreground">{plagiarismResult.originality_score}%</div>
-                        <div className="text-xs text-muted-foreground mt-1">Originality</div>
+                        <div className="text-xl sm:text-2xl font-bold text-foreground">{plagiarismResult.originality_score}%</div>
+                        <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">Originality</div>
                       </div>
                       <div className="rounded-xl border border-border p-4 text-center">
-                        <div className="text-2xl font-bold text-foreground">{plagiarismResult.ai_detection_score}%</div>
-                        <div className="text-xs text-muted-foreground mt-1">AI Likelihood</div>
+                        <div className="text-xl sm:text-2xl font-bold text-foreground">{plagiarismResult.ai_detection_score}%</div>
+                        <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">AI Likelihood</div>
                       </div>
                       <div className="rounded-xl border border-border p-4 text-center">
-                        <div className={`text-2xl font-bold ${plagiarismResult.overall_risk === "low" ? "text-green-600" : plagiarismResult.overall_risk === "medium" ? "text-yellow-600" : "text-red-600"}`}>
+                        <div className={`text-xl sm:text-2xl font-bold ${plagiarismResult.overall_risk === "low" ? "text-green-600" : plagiarismResult.overall_risk === "medium" ? "text-yellow-600" : "text-red-600"}`}>
                           {plagiarismResult.overall_risk.toUpperCase()}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">Risk Level</div>
+                        <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">Risk Level</div>
                       </div>
                     </div>
 
