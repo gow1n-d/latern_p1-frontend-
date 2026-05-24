@@ -1140,12 +1140,27 @@ export default function PaperEditor() {
         <div className="md:hidden flex items-center justify-between border-b border-border bg-card px-3 py-2">
           <button
             onClick={() => setShowMobileSections(true)}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground shrink-0"
           >
             <Menu className="h-4 w-4" />
-            <span className="font-medium text-foreground truncate max-w-[140px]">{currentSection?.label}</span>
+            <span className="font-medium text-foreground truncate max-w-[100px]">{currentSection?.label}</span>
           </button>
           <div className="flex items-center gap-1">
+            {/* Mobile view mode toggle */}
+            <div className="flex items-center rounded-lg border border-border bg-muted p-0.5">
+              <button
+                onClick={() => setViewMode("edit")}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${viewMode === "edit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+              >
+                <Edit3 className="h-3 w-3" /> Edit
+              </button>
+              <button
+                onClick={() => setViewMode("preview")}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${viewMode === "preview" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+              >
+                <Eye className="h-3 w-3" /> Paper
+              </button>
+            </div>
             <span className="text-xs text-muted-foreground">{filledSections}/{sections.length}</span>
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleManualSave} disabled={isSaving || !paperId}>
               <Save className="h-3 w-3" />
