@@ -33,11 +33,7 @@ const stats = [
   { value: "98%", label: "Format Accuracy" },
 ];
 
-const testimonials = [
-  { name: "Dr. Sarah Chen", role: "Computer Science, MIT", text: "PaperForge cut my paper preparation time in half. The AI-generated literature review was remarkably thorough and well-structured.", rating: 5 },
-  { name: "Prof. Ahmed Hassan", role: "Electrical Engineering, Stanford", text: "The journal template system is brilliant. No more manual formatting — it just works perfectly with IEEE standards.", rating: 5 },
-  { name: "Dr. Maria Rodriguez", role: "Data Science, Oxford", text: "As a non-native English speaker, the AI writing assistant has been invaluable for producing publication-quality prose.", rating: 5 },
-];
+
 
 const plans = [
   { id: "free", name: "Free", price: "$0", period: "forever", features: ["3 papers/month", "5 AI generations/day", "Basic templates", "Text export"], popular: false },
@@ -56,13 +52,12 @@ export default function LandingPage() {
         <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-accent" />
-            <span className="font-display text-xl font-bold text-foreground">PaperForge</span>
+            <span className="font-display text-xl font-bold text-foreground">Latern Paper Forge</span>
           </div>
           <div className="hidden md:flex items-center gap-6">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
-            <a href="#testimonials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Reviews</a>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="hidden sm:inline-flex">Sign In</Button>
@@ -90,7 +85,6 @@ export default function LandingPage() {
                 <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Features</a>
                 <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">How It Works</a>
                 <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Pricing</a>
-                <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Reviews</a>
                 <div className="flex gap-2 pt-2 border-t border-border/50">
                   <Button variant="ghost" size="sm" onClick={() => { navigate("/auth"); setMobileMenuOpen(false); }} className="flex-1">Sign In</Button>
                   <Button variant="hero" size="sm" onClick={() => { navigate("/auth"); setMobileMenuOpen(false); }} className="flex-1">Get Started</Button>
@@ -194,32 +188,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section id="testimonials" className="py-16 sm:py-24">
-        <div className="container mx-auto px-4 sm:px-6">
-          <div className="text-center mb-10 sm:mb-16">
-            <h2 className="font-display text-2xl sm:text-4xl font-bold text-foreground">Trusted by Researchers</h2>
-            <p className="mt-3 sm:mt-4 text-base sm:text-lg text-muted-foreground">See what academics say about PaperForge</p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-3">
-            {testimonials.map((t, i) => (
-              <motion.div key={t.name} className="rounded-xl border border-border bg-card p-6 shadow-card"
-                initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-                <div className="flex gap-1 mb-4">
-                  {Array.from({ length: t.rating }).map((_, j) => (
-                    <Star key={j} className="h-4 w-4 fill-accent text-accent" />
-                  ))}
-                </div>
-                <p className="text-card-foreground leading-relaxed mb-4">"{t.text}"</p>
-                <div>
-                  <p className="font-semibold text-card-foreground text-sm">{t.name}</p>
-                  <p className="text-xs text-muted-foreground">{t.role}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+
 
       {/* Pricing */}
       <section id="pricing" className="py-16 sm:py-24 bg-muted/50">
@@ -282,7 +251,7 @@ export default function LandingPage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <BookOpen className="h-5 w-5 text-accent" />
-                <span className="font-display font-bold text-foreground">PaperForge</span>
+                <span className="font-display font-bold text-foreground">Latern Paper Forge</span>
               </div>
               <p className="text-sm text-muted-foreground">AI-powered academic paper writing platform for researchers worldwide.</p>
             </div>
@@ -314,7 +283,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">© 2026 PaperForge. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground">© 2026 Latern Paper Forge. All rights reserved.</p>
             <p className="text-sm text-muted-foreground">Built for researchers, by researchers.</p>
           </div>
         </div>
