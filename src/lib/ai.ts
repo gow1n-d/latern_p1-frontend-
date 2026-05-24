@@ -206,7 +206,12 @@ export type ScholarResult = {
 };
 
 export type DiagramResult = {
-  success: boolean; paperType: "hardware" | "software" | "mixed"; type: "mermaid"; code: string; caption: string;
+  success: boolean; 
+  paperType: "hardware" | "software" | "mixed"; 
+  type: "mermaid" | "image"; 
+  code?: string; 
+  imageData?: string;
+  caption: string;
 };
 
 export function sanitizeMermaidCode(code: string): string {

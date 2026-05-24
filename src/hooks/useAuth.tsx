@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: "admin@paperforge.com",
             user_metadata: { full_name: "Super Admin" },
             role: "authenticated",
-          } as User;
+          } as unknown as User;
           const fakeSession = {
             user: fakeUser,
             access_token: "mock-token",
@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: "admin@paperforge.com",
           user_metadata: { full_name: "Super Admin" },
           role: "authenticated",
-        } as User;
+        } as unknown as User;
         const fakeSession = {
           user: fakeUser,
           access_token: "mock-token",
