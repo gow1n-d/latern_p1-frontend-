@@ -1401,48 +1401,83 @@ export default function PaperEditor() {
         </div>
 
         {/* Mobile bottom action bar */}
-        <div className="md:hidden border-t border-border bg-card px-2 py-1.5 flex items-center justify-around gap-1 shrink-0 safe-area-bottom">
-          {canGenerate && (
+        <div className="md:hidden border-t border-border bg-card px-1 py-1.5 shrink-0 safe-area-bottom">
+          <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
+            {canGenerate && (
+              <button
+                onClick={handleGenerateSection}
+                disabled={isBusy}
+                className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 shrink-0"
+              >
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                <span className="text-[10px] font-medium">Generate</span>
+              </button>
+            )}
             <button
-              onClick={handleGenerateSection}
+              onClick={handleHumanize}
               disabled={isBusy}
-              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-emerald-600 hover:bg-emerald-500/10 transition-colors disabled:opacity-40 shrink-0"
             >
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              <span className="text-[10px] font-medium">Generate</span>
+              {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
+              <span className="text-[10px] font-medium">Humanize</span>
             </button>
-          )}
-          <button
-            onClick={handleHumanize}
-            disabled={isBusy}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-emerald-600 hover:bg-emerald-500/10 transition-colors disabled:opacity-40"
-          >
-            {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
-            <span className="text-[10px] font-medium">Humanize</span>
-          </button>
-          <button
-            onClick={() => setShowAiPanel(!showAiPanel)}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors"
-          >
-            <MessageSquare className="h-4 w-4" />
-            <span className="text-[10px] font-medium">AI Assist</span>
-          </button>
-          <button
-            onClick={handleCompleteEntirePaper}
-            disabled={isBusy}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
-          >
-            {isCompletingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            <span className="text-[10px] font-medium">Complete</span>
-          </button>
-          <button
-            onClick={handleValidateFormat}
-            disabled={isValidating}
-            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40"
-          >
-            {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-            <span className="text-[10px] font-medium">Validate</span>
-          </button>
+            <button
+              onClick={() => setShowAiPanel(!showAiPanel)}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors shrink-0"
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span className="text-[10px] font-medium">AI Assist</span>
+            </button>
+            <button
+              onClick={handleCompleteEntirePaper}
+              disabled={isBusy}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 shrink-0"
+            >
+              {isCompletingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              <span className="text-[10px] font-medium">Complete</span>
+            </button>
+            {canGenerate && (
+              <button
+                onClick={() => setShowDiagramGenerator(true)}
+                disabled={isBusy}
+                className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 shrink-0"
+              >
+                <Image className="h-4 w-4" />
+                <span className="text-[10px] font-medium">Diagram</span>
+              </button>
+            )}
+            <div className="w-px h-6 bg-border shrink-0 mx-0.5" />
+            <button
+              onClick={handleValidateFormat}
+              disabled={isValidating}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
+            >
+              {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+              <span className="text-[10px] font-medium">Validate</span>
+            </button>
+            <button
+              onClick={handleCheckPlagiarism}
+              disabled={isCheckingPlagiarism}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
+            >
+              {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+              <span className="text-[10px] font-medium">Plagiarism</span>
+            </button>
+            <button
+              onClick={() => setShowScholar(true)}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors shrink-0"
+            >
+              <GraduationCap className="h-4 w-4" />
+              <span className="text-[10px] font-medium">Scholar</span>
+            </button>
+            <button
+              onClick={() => setShowAuthorModal(true)}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors shrink-0"
+            >
+              <User className="h-4 w-4" />
+              <span className="text-[10px] font-medium">Authors</span>
+            </button>
+          </div>
         </div>
       </main>
 
@@ -1877,6 +1912,15 @@ export default function PaperEditor() {
               {/* Premium Background Ambient Glow */}
               <div className="absolute -top-24 -left-24 w-48 h-48 bg-accent/20 rounded-full blur-3xl animate-pulse" />
               <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl" />
+
+              {/* Close / Cancel Button */}
+              <button
+                onClick={() => setExportState(null)}
+                className="absolute top-3 right-3 z-10 rounded-full p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
 
               {/* Conditionally Rendered Header / Loader */}
               {exportState.ready ? (
