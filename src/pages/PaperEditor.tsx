@@ -5,12 +5,12 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2, Image, Menu, ChevronRight, PanelLeftClose
+  Moon, Sun, Wand2, Image, Menu, ChevronRight, PanelLeftClose, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateSection, aiAssist, humanizeText, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
+import { generateSection, aiAssist, humanizeText, enhanceUserData, stripMarkdown, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
@@ -143,6 +143,7 @@ export default function PaperEditor() {
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
   const [isHumanizing, setIsHumanizing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileUploadRef = useRef<HTMLInputElement>(null);
 
   // Modal states
   const [showValidation, setShowValidation] = useState(false);
@@ -370,7 +371,7 @@ export default function PaperEditor() {
       {
         onDelta: (text) => {
           accumulated += text;
-          const current = accumulated;
+          const current = stripMarkdown(accumulated);
           setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: current } : s)));
         },
         onDone: () => {
@@ -430,7 +431,7 @@ export default function PaperEditor() {
           {
             onDelta: (text) => {
               accumulated += text;
-              const current = accumulated;
+              const current = stripMarkdown(accumulated);
               setSections((prev) => prev.map((s) => (s.id === sec.id ? { ...s, content: current } : s)));
             },
             onDone: () => {
@@ -454,6 +455,96 @@ export default function PaperEditor() {
     setSections((prev) => { autoSave(prev); return prev; });
   }, [sections, selectedJournal, paperMeta, autoSave]);
 
+  // ── File upload handler for AI Assist ──
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so re-uploading same file triggers change
+    e.target.value = "";
+
+    const titleContent = sections.find(s => s.id === "title")?.content || "";
+    const journalName = journalOptions.find(j => j.id === selectedJournal)?.name || "IEEE";
+
+    // Handle image files → embed as section diagram
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (!dataUrl) { toast.error("Failed to read image."); return; }
+
+        // Save as section diagram
+        const caption = `Imported: ${file.name}`;
+        setSectionDiagrams(prev => ({
+          ...prev,
+          [activeSection]: { type: "image", imageData: dataUrl, caption }
+        }));
+
+        // Also attach to the section in sections state so it persists on save and appears in preview/export
+        setSections(prev => {
+          const updated = prev.map(s =>
+            s.id === activeSection
+              ? { ...s, diagram: { type: "image" as const, imageData: dataUrl, caption } }
+              : s
+          );
+          autoSave(updated);
+          return updated;
+        });
+
+        toast.success(`Image "${file.name}" added to ${currentSection?.label}!`);
+      };
+      reader.onerror = () => toast.error("Failed to read image file.");
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Handle text/data files → AI enhances the content
+    const textTypes = [
+      "text/plain", "text/csv", "text/tab-separated-values",
+      "application/json", "text/markdown", "text/html",
+      "application/xml", "text/xml"
+    ];
+    const isText = textTypes.includes(file.type) ||
+      file.name.match(/\.(txt|csv|tsv|json|md|log|dat|xml|yaml|yml|ini|cfg|conf|tex|bib|py|r|m|sql)$/i);
+
+    if (!isText) {
+      toast.error("Unsupported file type. Upload an image or a text/data file (.txt, .csv, .json, .md, .log, etc.).");
+      return;
+    }
+
+    // Read text content
+    const text = await file.text();
+    if (!text.trim()) { toast.error("File is empty."); return; }
+
+    toast.info(`Enhancing data from "${file.name}"...`);
+    setIsAssisting(true);
+    let accumulated = "";
+
+    await enhanceUserData(
+      {
+        rawData: text,
+        section: currentSection?.label || activeSection,
+        journal: journalName,
+        title: titleContent,
+      },
+      {
+        onDelta: (chunk) => {
+          accumulated += chunk;
+          const current = stripMarkdown(accumulated);
+          setSections(prev => prev.map(s => s.id === activeSection ? { ...s, content: current } : s));
+        },
+        onDone: () => {
+          setIsAssisting(false);
+          toast.success(`Data from "${file.name}" enhanced and added!`);
+          setSections(prev => { autoSave(prev); return prev; });
+        },
+        onError: (err) => {
+          setIsAssisting(false);
+          toast.error(err);
+        },
+      }
+    );
+  }, [activeSection, currentSection, sections, selectedJournal, autoSave]);
+
   const handleAiAssist = useCallback(async (instruction: string) => {
     const content = currentSection?.content || "";
     if (!content.trim()) { toast.error("No content to improve. Write or generate content first."); return; }
@@ -466,7 +557,7 @@ export default function PaperEditor() {
       {
         onDelta: (text) => {
           accumulated += text;
-          const current = accumulated;
+          const current = stripMarkdown(accumulated);
           setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: current } : s)));
         },
         onDone: () => {
@@ -500,33 +591,11 @@ export default function PaperEditor() {
 
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const handleExportPDF = async () => {
-    const title = sections.find((s) => s.id === "title")?.content || "paper";
-    setShowExportMenu(false);
-    setExportState({ active: true, step: 1, format: "PDF", paperTitle: title });
-    try {
-      const pdfBlob = await exportToPDF(sections, selectedJournal, title, authorDetails, (step) => {
-        setExportState((prev) => prev ? { ...prev, step } : null);
-      });
-      setExportState({
-        active: true,
-        step: 5,
-        format: "PDF",
-        paperTitle: title,
-        ready: true,
-        blob: pdfBlob,
-        ext: "pdf"
-      });
-      toast.success("PDF compilation complete!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to export PDF.");
-      setExportState(null);
-    }
-  };
+
 
   const handleExportLaTeX = () => {
-    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    const cleanSections = sections.map(s => ({ ...s, content: stripMarkdown(s.content) }));
+    const title = cleanSections.find((s) => s.id === "title")?.content || "paper";
     setShowExportMenu(false);
     setExportState({ active: true, step: 1, format: "LaTeX (.tex)", paperTitle: title });
 
@@ -535,7 +604,7 @@ export default function PaperEditor() {
       setExportState(prev => prev ? { ...prev, step: 3 } : null);
       requestAnimationFrame(() => {
         // Build LaTeX content directly as a blob instead of auto-downloading
-        const latexContent = buildLaTeXContent(sections, selectedJournal, title, authorDetails);
+        const latexContent = buildLaTeXContent(cleanSections, selectedJournal, title, authorDetails);
         const latexBlob = new Blob([latexContent], { type: "text/plain" });
         setExportState({
           active: true,
@@ -551,38 +620,15 @@ export default function PaperEditor() {
     });
   };
 
-  const handleExportText = () => {
-    const title = sections.find((s) => s.id === "title")?.content || "paper";
-    setShowExportMenu(false);
-    setExportState({ active: true, step: 1, format: "Text (.txt)", paperTitle: title });
 
-    // Run synchronously — text generation is instant
-    requestAnimationFrame(() => {
-      setExportState(prev => prev ? { ...prev, step: 3 } : null);
-      requestAnimationFrame(() => {
-        // Build text content directly as a blob instead of auto-downloading
-        const textContent = buildTextContent(sections);
-        const textBlob = new Blob([textContent], { type: "text/plain" });
-        setExportState({
-          active: true,
-          step: 5,
-          format: "Text (.txt)",
-          paperTitle: title,
-          ready: true,
-          blob: textBlob,
-          ext: "txt"
-        });
-        toast.success("Text exported successfully!");
-      });
-    });
-  };
 
   const handleExportWord = async () => {
-    const title = sections.find((s) => s.id === "title")?.content || "paper";
+    const cleanSections = sections.map(s => ({ ...s, content: stripMarkdown(s.content) }));
+    const title = cleanSections.find((s) => s.id === "title")?.content || "paper";
     setShowExportMenu(false);
     setExportState({ active: true, step: 1, format: "Word (.doc)", paperTitle: title });
     try {
-      const wordBlob = await exportToWord(sections, selectedJournal, title, authorDetails, (step) => {
+      const wordBlob = await exportToWord(cleanSections, selectedJournal, title, authorDetails, (step) => {
         setExportState((prev) => prev ? { ...prev, step } : null);
       });
       setExportState({
@@ -602,55 +648,6 @@ export default function PaperEditor() {
     }
   };
 
-  const handleExportPDFFast = async () => {
-    const title = sections.find((s) => s.id === "title")?.content || "paper";
-    setShowExportMenu(false);
-    setExportState({ active: true, step: 1, format: "PDF (Fast)", paperTitle: title });
-    try {
-      const pdfBlob = await exportToPDF(sections, selectedJournal, title, authorDetails, (step) => {
-        setExportState((prev) => prev ? { ...prev, step } : null);
-      }, true);
-      setExportState({
-        active: true,
-        step: 5,
-        format: "PDF (Fast)",
-        paperTitle: title,
-        ready: true,
-        blob: pdfBlob,
-        ext: "pdf"
-      });
-      toast.success("Fast PDF export complete!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to export PDF.");
-      setExportState(null);
-    }
-  };
-
-  const handleExportWordFast = async () => {
-    const title = sections.find((s) => s.id === "title")?.content || "paper";
-    setShowExportMenu(false);
-    setExportState({ active: true, step: 1, format: "Word (Fast)", paperTitle: title });
-    try {
-      const wordBlob = await exportToWord(sections, selectedJournal, title, authorDetails, (step) => {
-        setExportState((prev) => prev ? { ...prev, step } : null);
-      }, true);
-      setExportState({
-        active: true,
-        step: 5,
-        format: "Word (Fast)",
-        paperTitle: title,
-        ready: true,
-        blob: wordBlob,
-        ext: "doc"
-      });
-      toast.success("Fast Word export complete!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to export Word document.");
-      setExportState(null);
-    }
-  };
 
   const copySection = () => {
     if (currentSection?.content) {
@@ -670,7 +667,7 @@ export default function PaperEditor() {
       {
         onDelta: (text) => {
           accumulated += text;
-          const current = accumulated;
+          const current = stripMarkdown(accumulated);
           setSections((prev) => prev.map((s) => (s.id === activeSection ? { ...s, content: current } : s)));
         },
         onDone: () => {
@@ -782,7 +779,7 @@ export default function PaperEditor() {
           {
             onDelta: (text) => {
               accumulated += text;
-              const current = accumulated;
+              const current = stripMarkdown(accumulated);
               setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
             },
             onDone: () => {},
@@ -819,7 +816,7 @@ export default function PaperEditor() {
           {
             onDelta: (text) => {
               accumulated += text;
-              const current = accumulated;
+              const current = stripMarkdown(accumulated);
               setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
             },
             onDone: () => {},
@@ -875,7 +872,7 @@ export default function PaperEditor() {
         {
           onDelta: (text) => {
             accumulated += text;
-            const current = accumulated;
+            const current = stripMarkdown(accumulated);
             setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
           },
           onDone: () => {},
@@ -1221,14 +1218,8 @@ export default function PaperEditor() {
               </Button>
               {showExportMenu && (
                 <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
-                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
                   <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
                   <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
-                  <button onClick={handleExportText} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
-                  <div className="border-t border-border my-1" />
-                  <p className="px-4 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Fast (no diagrams)</p>
-                  <button onClick={handleExportPDFFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast PDF</button>
-                  <button onClick={handleExportWordFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast Word</button>
                 </div>
               )}
             </div>
@@ -1318,14 +1309,8 @@ export default function PaperEditor() {
               </Button>
               {showExportMenu && (
                 <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
-                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
-                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word (.doc)</button>
-                  <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
-                  <button onClick={handleExportText} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">📋 Export as Text</button>
-                  <div className="border-t border-border my-1" />
-                  <p className="px-4 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Fast (no diagrams)</p>
-                  <button onClick={handleExportPDFFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast PDF</button>
-                  <button onClick={handleExportWordFast} className="w-full text-left px-4 py-2 text-sm text-card-foreground hover:bg-muted transition-colors">⚡ Fast Word</button>
+                  <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
+                  <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
                 </div>
               )}
             </div>
@@ -1452,7 +1437,23 @@ export default function PaperEditor() {
                     ))}
                   </div>
                 </div>
-                <div className="border-t border-border p-3">
+                <div className="border-t border-border p-3 space-y-2">
+                  {/* Upload data hint */}
+                  <button
+                    onClick={() => fileUploadRef.current?.click()}
+                    disabled={isBusy}
+                    className="w-full rounded-lg border-2 border-dashed border-accent/25 bg-accent/5 px-3 py-2 text-xs text-center hover:bg-accent/10 hover:border-accent/40 transition-colors disabled:opacity-40 group"
+                  >
+                    <Upload className="h-3.5 w-3.5 mx-auto mb-1 text-accent/60 group-hover:text-accent" />
+                    <span className="text-muted-foreground group-hover:text-accent-foreground">Upload text data or images</span>
+                  </button>
+                  <input
+                    ref={fileUploadRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,.txt,.csv,.tsv,.json,.md,.log,.dat,.xml,.yaml,.yml,.tex,.bib,.py,.r,.m,.sql"
+                    onChange={handleFileUpload}
+                  />
                   <div className="flex gap-2">
                     <input
                       className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"

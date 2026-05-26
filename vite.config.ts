@@ -22,6 +22,12 @@ export default defineConfig(({ mode }) => ({
         rewrite: (path) => path.replace(/^\/api\/nvidia/, ""),
         secure: true,
       },
+      "/api/zerogpt": {
+        target: "https://api.zerogpt.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/zerogpt/, ""),
+        secure: true,
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

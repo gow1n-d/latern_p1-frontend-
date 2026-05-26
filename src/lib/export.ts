@@ -23,8 +23,8 @@ type JournalConfig = {
 
 // ── Unified config — IDENTICAL to PaperPreview.tsx ──
 const CONFIGS: Record<string, JournalConfig> = {
-  ieee:          { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", journalHeader: "IEEE TRANSACTIONS", lineSpacing: 1.12 },
-  "ieee-conf":   { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", journalHeader: "IEEE CONFERENCE PROCEEDINGS", lineSpacing: 1.12 },
+  ieee:          { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", lineSpacing: 1.12 },
+  "ieee-conf":   { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", lineSpacing: 1.12 },
   acm:           { columns: 2, titleSize: 20, bodySize: 9, headingSize: 9, headingStyle: "numeric", abstractStyle: "normal", journalHeader: "ACM", lineSpacing: 1.15 },
   "acm-conf":    { columns: 2, titleSize: 20, bodySize: 9, headingSize: 9, headingStyle: "numeric", abstractStyle: "normal", journalHeader: "ACM CONFERENCE", lineSpacing: 1.15 },
   cvpr:          { columns: 2, titleSize: 20, bodySize: 9.5, headingSize: 9.5, headingStyle: "numeric", abstractStyle: "normal", journalHeader: "CVPR", lineSpacing: 1.12 },
@@ -103,6 +103,20 @@ const NON_BODY = ["title", "abstract", "keywords", "references", "works-cited", 
 
 // Global image/diagram PNG cache — shared across exports
 const pngCache = new Map<string, string>();
+
+/** Extract width/height from a base64 PNG/JPEG data URL. Returns default if unable to parse. */
+function getImageDimensions(dataUrl: string): { w: number; h: number } {
+  try {
+    // Try to decode from the PNG IHDR chunk (bytes 16-23 contain width and height as 4-byte big-endian)
+    const raw = atob(dataUrl.split(",")[1] || "");
+    if (raw.length > 24 && raw.charCodeAt(1) === 0x50 /* P */ && raw.charCodeAt(2) === 0x4E /* N */ && raw.charCodeAt(3) === 0x47 /* G */) {
+      const w = (raw.charCodeAt(16) << 24) | (raw.charCodeAt(17) << 16) | (raw.charCodeAt(18) << 8) | raw.charCodeAt(19);
+      const h = (raw.charCodeAt(20) << 24) | (raw.charCodeAt(21) << 16) | (raw.charCodeAt(22) << 8) | raw.charCodeAt(23);
+      if (w > 0 && w < 10000 && h > 0 && h < 10000) return { w, h };
+    }
+  } catch {}
+  return { w: 800, h: 500 }; // Safe default — roughly 1.6:1 landscape
+}
 
 /** Pre-cache a diagram PNG so exports are instant. Call this when a diagram is first generated. */
 export async function preCacheDiagramPng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string; code?: string }): Promise<void> {
@@ -460,8 +474,10 @@ function renderSingleColumn(
     const pngData = diagramPngs[section.id];
     const diagram = diagramInfos[section.id];
     if (pngData && diagram) {
+      const dims = getImageDimensions(pngData);
+      const aspectRatio = dims.h / dims.w;
       const imgW = contentW * 0.85;
-      const imgH = imgW * 0.55;
+      const imgH = Math.min(imgW * aspectRatio, (ph - margin * 2) * 0.45); // cap at 45% page height
       checkSpace(imgH + 10);
       try {
         doc.addImage(pngData, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
@@ -611,8 +627,10 @@ function renderTwoColumn(
       const pngData = diagramPngs[item.sectionId];
       if (pngData) {
         figIndex++;
+        const dims = getImageDimensions(pngData);
+        const aspectRatio = dims.h / dims.w;
         const imgW = colW;
-        const imgH = colW * 0.58;
+        const imgH = Math.min(colW * aspectRatio, (bottomLimit - margin) * 0.4); // cap at 40% column height
         checkCol(imgH + 10);
         try {
           doc.addImage(pngData, "PNG", getX(), y, imgW, imgH);

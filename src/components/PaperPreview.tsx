@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
+import { stripMarkdown } from "@/lib/ai";
 
 export type AuthorDetails = {
   authorNames: string[];
@@ -25,8 +26,8 @@ type FormatConfig = {
 };
 
 const CONFIGS: Record<string, FormatConfig> = {
-  ieee:          { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", journalHeader: "IEEE TRANSACTIONS", lineSpacing: 1.12 },
-  "ieee-conf":   { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", journalHeader: "IEEE CONFERENCE PROCEEDINGS", lineSpacing: 1.12 },
+  ieee:          { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", lineSpacing: 1.12 },
+  "ieee-conf":   { columns: 2, titleSize: 22, bodySize: 9.5, headingSize: 9.5, headingStyle: "roman", abstractStyle: "italic", lineSpacing: 1.12 },
   acm:           { columns: 2, titleSize: 20, bodySize: 9, headingSize: 9, headingStyle: "numeric", abstractStyle: "normal", journalHeader: "ACM", lineSpacing: 1.15 },
   "acm-conf":    { columns: 2, titleSize: 20, bodySize: 9, headingSize: 9, headingStyle: "numeric", abstractStyle: "normal", journalHeader: "ACM CONFERENCE", lineSpacing: 1.15 },
   cvpr:          { columns: 2, titleSize: 20, bodySize: 9.5, headingSize: 9.5, headingStyle: "numeric", abstractStyle: "normal", journalHeader: "CVPR", lineSpacing: 1.12 },
@@ -103,9 +104,8 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
       </div>
     );
   };
-
   const paragraphs = (content: string) =>
-    content.split("\n").filter(Boolean).map((p, i) => (
+    stripMarkdown(content).split("\n").filter(Boolean).map((p, i) => (
       <p key={i} style={{
         fontFamily: "'Times New Roman', Times, serif",
         fontSize: config.bodySize,
@@ -123,17 +123,17 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
     if (!d) return null;
     figureNum++;
     return (
-      <figure style={{ margin: "6px 0", breakInside: "avoid-column" as const, textAlign: "center" as const }}>
+      <figure style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
         {d.type === "mermaid" && d.svg ? (
-          <div style={{ display: "flex", justifyContent: "center" }} dangerouslySetInnerHTML={{ __html: d.svg }} />
+          <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
         ) : d.type === "image" && d.imageData ? (
-          <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", height: "auto", borderRadius: 2 }} />
+          <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: "100%", height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
         ) : null}
         <figcaption style={{
           fontFamily: "'Times New Roman', Times, serif",
           fontSize: config.bodySize - 0.5,
           fontStyle: "italic" as const,
-          marginTop: 3,
+          marginTop: 4,
           textAlign: "center" as const,
         }}>
           Fig. {figureNum}. {d.caption}
@@ -177,7 +177,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
             textIndent: -12,
             textAlign: "justify" as const,
           }}>
-            [{i + 1}] {r.replace(/^\[\d+\]\s*/, "")}
+            [{i + 1}] {stripMarkdown(r).replace(/^\[\d+\]\s*/, "")}
           </p>
         ))}
       </div>
@@ -228,7 +228,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
           marginBottom: 8,
           letterSpacing: -0.2,
         }}>
-          {(titleSection?.content || "Untitled Paper").split("\n")[0].slice(0, 300)}
+          {stripMarkdown(titleSection?.content || "Untitled Paper").split("\n")[0].slice(0, 300)}
         </h1>
 
         {/* Author block */}
@@ -304,7 +304,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
               margin: 0,
               fontStyle: config.abstractStyle === "italic" ? "italic" as const : "normal" as const,
             }}>
-              {abstractSection.content}
+              {stripMarkdown(abstractSection.content)}
             </p>
           </div>
         )}
@@ -321,7 +321,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
               <span style={{ fontWeight: 700, fontStyle: "italic" as const }}>
                 {journal.startsWith("ieee") || journal === "icassp" ? "Index Terms" : "Keywords"}—
               </span>
-              <span style={{ fontStyle: "italic" as const }}>{keywordsSection.content}</span>
+              <span style={{ fontStyle: "italic" as const }}>{stripMarkdown(keywordsSection.content)}</span>
             </p>
           </div>
         )}
@@ -330,7 +330,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
         {ccsSection?.content && (
           <div style={{ marginBottom: 6 }}>
             <p style={{ fontFamily: "'Times New Roman', Times, serif", fontSize: config.bodySize, fontWeight: 700, margin: 0 }}>CCS Concepts</p>
-            <p style={{ fontFamily: "'Times New Roman', Times, serif", fontSize: config.bodySize, fontStyle: "italic" as const, margin: 0 }}>{ccsSection.content}</p>
+            <p style={{ fontFamily: "'Times New Roman', Times, serif", fontSize: config.bodySize, fontStyle: "italic" as const, margin: 0 }}>{stripMarkdown(ccsSection.content)}</p>
           </div>
         )}
 

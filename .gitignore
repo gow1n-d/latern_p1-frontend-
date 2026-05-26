@@ -25,3 +25,6 @@ dist-ssr
 
 # Decoupled backend
 /backend
+
+# MCP config with API keys
+mcp.json
