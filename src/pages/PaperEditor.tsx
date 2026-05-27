@@ -866,9 +866,15 @@ export default function PaperEditor() {
     setAiMessage("");
     setIsAssisting(true);
 
-    // Intercept instructions to minimize, maximize, or optimize diagrams locally for ultra-fast response
+    // Intercept instructions to minimize, maximize, optimize, or remove diagrams locally for ultra-fast response
     const lowerInstruction = instruction.toLowerCase();
-    if (lowerInstruction.includes("minimize") || lowerInstruction.includes("maximize") || lowerInstruction.includes("optimize")) {
+    if (
+      lowerInstruction.includes("minimize") || 
+      lowerInstruction.includes("maximize") || 
+      lowerInstruction.includes("optimize") ||
+      lowerInstruction.includes("remove") ||
+      lowerInstruction.includes("delete")
+    ) {
       let targetSectionId = activeSection;
       for (const s of sections) {
         if (lowerInstruction.includes(s.label.toLowerCase()) || lowerInstruction.includes(s.id.toLowerCase())) {
@@ -894,6 +900,13 @@ export default function PaperEditor() {
         if (lowerInstruction.includes("maximize")) {
           handleResizeDiagram(targetSectionId, diagId, "100%");
           setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully maximized the diagram in the "${label}" section to 100% full width.` }]);
+          setIsAssisting(false);
+          setAiMessage("");
+          return;
+        }
+        if (lowerInstruction.includes("remove") || lowerInstruction.includes("delete")) {
+          handleRemoveDiagram(targetSectionId, diagId);
+          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully removed the diagram/image in the "${label}" section.` }]);
           setIsAssisting(false);
           setAiMessage("");
           return;

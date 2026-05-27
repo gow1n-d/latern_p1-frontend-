@@ -189,7 +189,14 @@ export async function agenticAiAssist(
   }
 ): Promise<AgenticResponse> {
   const sectionsSummary = params.sections
-    .map(s => `ID: "${s.id}", Label: "${s.label}", Length: ${s.content?.length || 0} characters. Content: "${s.content?.slice(0, 800) || ""}"`)
+    .map(s => {
+      const diags = s.diagrams && s.diagrams.length > 0
+        ? s.diagrams.map((d: any) => `- Diagram ID: "${d.id || ""}", Type: "${d.type}", Caption: "${d.caption || ""}", Width: "${d.width || "100%"}"`).join("\n")
+        : s.diagram
+          ? `- Diagram ID: "${s.diagram.id || ""}", Type: "${s.diagram.type}", Caption: "${s.diagram.caption || ""}", Width: "${s.diagram.width || "100%"}"`
+          : "None";
+      return `ID: "${s.id}", Label: "${s.label}", Length: ${s.content?.length || 0} characters.\nContent: "${s.content?.slice(0, 800) || ""}"\nDiagrams:\n${diags}`;
+    })
     .join("\n\n");
 
   const activeSectionLabel = params.sections.find(s => s.id === params.activeSectionId)?.label || params.activeSectionId || "None";
