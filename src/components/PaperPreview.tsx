@@ -119,27 +119,30 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
 
   let figureNum = 0;
   const renderDiagram = (s: PaperSection) => {
-    const d = s.diagram;
-    if (!d) return null;
-    figureNum++;
-    return (
-      <figure style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
-        {d.type === "mermaid" && d.svg ? (
-          <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
-        ) : d.type === "image" && d.imageData ? (
-          <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: "100%", height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
-        ) : null}
-        <figcaption style={{
-          fontFamily: "'Times New Roman', Times, serif",
-          fontSize: config.bodySize - 0.5,
-          fontStyle: "italic" as const,
-          marginTop: 4,
-          textAlign: "center" as const,
-        }}>
-          Fig. {figureNum}. {d.caption}
-        </figcaption>
-      </figure>
-    );
+    const diags = s.diagrams || (s.diagram ? [s.diagram] : []);
+    if (diags.length === 0) return null;
+    return diags.map((d, index) => {
+      figureNum++;
+      const widthStyle = d.width || "100%";
+      return (
+        <figure key={d.id || index} style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
+          {d.type === "mermaid" && d.svg ? (
+            <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: widthStyle, margin: "0 auto", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
+          ) : d.type === "image" && d.imageData ? (
+            <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: widthStyle, height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
+          ) : null}
+          <figcaption style={{
+            fontFamily: "'Times New Roman', Times, serif",
+            fontSize: config.bodySize - 0.5,
+            fontStyle: "italic" as const,
+            marginTop: 4,
+            textAlign: "center" as const,
+          }}>
+            Fig. {figureNum}. {d.caption}
+          </figcaption>
+        </figure>
+      );
+    });
   };
 
   // Build body + references

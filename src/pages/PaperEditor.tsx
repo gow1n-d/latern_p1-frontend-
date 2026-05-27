@@ -5,14 +5,14 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2, Image, Menu, ChevronRight, PanelLeftClose, Upload
+  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateSection, aiAssist, humanizeText, enhanceUserData, stripMarkdown, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
+import { generateSection, aiAssist, agenticAiAssist, humanizeText, enhanceUserData, stripMarkdown, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
-import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, getSectionsForFormat } from "@/hooks/usePapers";
+import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, type SectionDiagram, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
 import DiagramGenerator from "@/components/DiagramGenerator";
 import { useAuth } from "@/hooks/useAuth";
@@ -130,8 +130,88 @@ export default function PaperEditor() {
   const [completingSection, setCompletingSection] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("title");
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [sectionDiagrams, setSectionDiagrams] = useState<Record<string, { type: "mermaid" | "image"; code?: string; imageData?: string; caption: string; svg?: string }>>({});
+  const [sectionDiagrams, setSectionDiagrams] = useState<Record<string, SectionDiagram[]>>({});
+
+  // Client-side image compression and resizing using Canvas
+  const optimizeImage = useCallback((dataUrl: string, maxDim = 1000, quality = 0.75): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = (err) => {
+        reject(err);
+      };
+    });
+  }, []);
+
+  // Client-side Mermaid SVG to PNG converter for instant caching
+  const convertSvgToPng = useCallback((svgString: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const cleanSvg = svgString.trim();
+        const blob = new Blob([cleanSvg], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const w = 800;
+          const h = 500;
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            const pngData = canvas.toDataURL("image/png");
+            URL.revokeObjectURL(url);
+            resolve(pngData);
+          } else {
+            URL.revokeObjectURL(url);
+            reject(new Error("Canvas context failed"));
+          }
+        };
+        img.onerror = (e) => {
+          URL.revokeObjectURL(url);
+          reject(e);
+        };
+        img.src = url;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }, []);
+
   const [aiMessage, setAiMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<{ sender: "user" | "ai"; message: string }[]>([
+    { sender: "ai", message: "Hello! I am your agentic academic co-author. Tell me to edit the paper, write sections, resize images, or update metadata, and I will handle it directly!" }
+  ]);
   const [showJournalPicker, setShowJournalPicker] = useState(isNew);
   const [showMetaForm, setShowMetaForm] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -144,6 +224,7 @@ export default function PaperEditor() {
   const [isHumanizing, setIsHumanizing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileUploadRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Modal states
   const [showValidation, setShowValidation] = useState(false);
@@ -187,9 +268,15 @@ export default function PaperEditor() {
     if (existingPaper) {
       setSections(existingPaper.sections);
       // Hydrate diagrams from persisted sections
-      const diagMap: Record<string, any> = {};
+      const diagMap: Record<string, SectionDiagram[]> = {};
       for (const s of existingPaper.sections) {
-        if (s.diagram) diagMap[s.id] = s.diagram;
+        if (s.diagrams && s.diagrams.length > 0) {
+          diagMap[s.id] = s.diagrams;
+        } else if (s.diagram) {
+          diagMap[s.id] = [{ ...s.diagram, id: s.diagram.id || Math.random().toString(36).substring(2, 9) }];
+        } else {
+          diagMap[s.id] = [];
+        }
       }
       setSectionDiagrams(diagMap);
       setSelectedJournal(existingPaper.journal);
@@ -200,8 +287,28 @@ export default function PaperEditor() {
       });
       setShowJournalPicker(false);
       setPaperId(existingPaper.id);
+
+      // Hydrate author details from localStorage if they exist
+      const cachedAuthors = localStorage.getItem(`pf_author_details_${existingPaper.id}`);
+      if (cachedAuthors) {
+        try {
+          setAuthorDetails(JSON.parse(cachedAuthors));
+        } catch {}
+      }
     }
   }, [existingPaper]);
+
+  // Save author details to localStorage whenever they change
+  useEffect(() => {
+    if (paperId && authorDetails) {
+      localStorage.setItem(`pf_author_details_${paperId}`, JSON.stringify(authorDetails));
+    }
+  }, [paperId, authorDetails]);
+
+  // Chat auto-scroll
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isAssisting]);
 
   // Word count
   useEffect(() => {
@@ -210,7 +317,7 @@ export default function PaperEditor() {
   }, [sections]);
 
   // Auto-save
-  const autoSave = useCallback((updatedSections: PaperSection[]) => {
+  const autoSave = useCallback((updatedSections: PaperSection[], updatedMeta = paperMeta) => {
     if (!paperId) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
@@ -223,7 +330,13 @@ export default function PaperEditor() {
       try {
         await updatePaper.mutateAsync({
           id: paperId,
-          updates: { sections: updatedSections, status },
+          updates: {
+            sections: updatedSections,
+            status,
+            domain: updatedMeta.domain,
+            methodology_summary: updatedMeta.methodology,
+            results_summary: updatedMeta.results_summary,
+          },
         });
         setLastSaved(new Date());
       } catch {
@@ -231,7 +344,7 @@ export default function PaperEditor() {
       }
       setIsSaving(false);
     }, 2000);
-  }, [paperId, updatePaper]);
+  }, [paperId, updatePaper, paperMeta]);
 
   const currentSection = sections.find((s) => s.id === activeSection);
   const filledSections = sections.filter((s) => s.content.trim()).length;
@@ -455,7 +568,7 @@ export default function PaperEditor() {
     setSections((prev) => { autoSave(prev); return prev; });
   }, [sections, selectedJournal, paperMeta, autoSave]);
 
-  // ── File upload handler for AI Assist ──
+  // ── File upload handler with client-side Canvas Optimization ──
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -465,32 +578,50 @@ export default function PaperEditor() {
     const titleContent = sections.find(s => s.id === "title")?.content || "";
     const journalName = journalOptions.find(j => j.id === selectedJournal)?.name || "IEEE";
 
-    // Handle image files → embed as section diagram
+    // Handle image files → compress and optimize locally before embedding
     if (file.type.startsWith("image/")) {
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         const dataUrl = ev.target?.result as string;
         if (!dataUrl) { toast.error("Failed to read image."); return; }
 
-        // Save as section diagram
-        const caption = `Imported: ${file.name}`;
-        setSectionDiagrams(prev => ({
-          ...prev,
-          [activeSection]: { type: "image", imageData: dataUrl, caption }
-        }));
+        toast.info("Optimizing and compressing image...");
+        try {
+          const optimizedDataUrl = await optimizeImage(dataUrl, 1000, 0.75);
+          const caption = `Imported: ${file.name}`;
+          const newDiag: SectionDiagram = {
+            id: Math.random().toString(36).substring(2, 9),
+            type: "image",
+            imageData: optimizedDataUrl,
+            caption,
+            width: "100%"
+          };
 
-        // Also attach to the section in sections state so it persists on save and appears in preview/export
-        setSections(prev => {
-          const updated = prev.map(s =>
-            s.id === activeSection
-              ? { ...s, diagram: { type: "image" as const, imageData: dataUrl, caption } }
-              : s
-          );
-          autoSave(updated);
-          return updated;
-        });
+          setSectionDiagrams(prev => {
+            const currentList = prev[activeSection] || [];
+            const updatedList = [...currentList, newDiag];
 
-        toast.success(`Image "${file.name}" added to ${currentSection?.label}!`);
+            setSections(prevSecs => {
+              const updatedSecs = prevSecs.map(s =>
+                s.id === activeSection
+                  ? { 
+                      ...s, 
+                      diagram: updatedList[0],
+                      diagrams: updatedList
+                    }
+                  : s
+              );
+              autoSave(updatedSecs);
+              return updatedSecs;
+            });
+
+            return { ...prev, [activeSection]: updatedList };
+          });
+
+          toast.success(`Image "${file.name}" optimized and added to ${currentSection?.label}!`);
+        } catch (err) {
+          toast.error("Failed to optimize image");
+        }
       };
       reader.onerror = () => toast.error("Failed to read image file.");
       reader.readAsDataURL(file);
@@ -543,10 +674,165 @@ export default function PaperEditor() {
         },
       }
     );
-  }, [activeSection, currentSection, sections, selectedJournal, autoSave]);
+  }, [activeSection, currentSection, sections, selectedJournal, autoSave, optimizeImage]);
 
+  // Sizing change handler
+  const handleResizeDiagram = useCallback((sectionId: string, diagId: string, width: string) => {
+    setSectionDiagrams(prev => {
+      const currentList = prev[sectionId] || [];
+      const updatedList = currentList.map(d => d.id === diagId ? { ...d, width } : d);
+
+      setSections(prevSecs => {
+        const updatedSecs = prevSecs.map(s =>
+          s.id === sectionId
+            ? { ...s, diagram: updatedList[0], diagrams: updatedList }
+            : s
+        );
+        autoSave(updatedSecs);
+        return updatedSecs;
+      });
+
+      return { ...prev, [sectionId]: updatedList };
+    });
+    toast.success("Image size updated!");
+  }, [autoSave]);
+
+  // Caption update handler
+  const handleUpdateCaption = useCallback((sectionId: string, diagId: string, caption: string) => {
+    setSectionDiagrams(prev => {
+      const currentList = prev[sectionId] || [];
+      const updatedList = currentList.map(d => d.id === diagId ? { ...d, caption } : d);
+
+      setSections(prevSecs => {
+        const updatedSecs = prevSecs.map(s =>
+          s.id === sectionId
+            ? { ...s, diagram: updatedList[0], diagrams: updatedList }
+            : s
+        );
+        autoSave(updatedSecs);
+        return updatedSecs;
+      });
+
+      return { ...prev, [sectionId]: updatedList };
+    });
+  }, [autoSave]);
+
+  // Diagram cancellation handler
+  const handleRemoveDiagram = useCallback((sectionId: string, diagId: string) => {
+    setSectionDiagrams(prev => {
+      const currentList = prev[sectionId] || [];
+      const updatedList = currentList.filter(d => d.id !== diagId);
+
+      setSections(prevSecs => {
+        const updatedSecs = prevSecs.map(s =>
+          s.id === sectionId
+            ? { 
+                ...s, 
+                diagram: updatedList.length > 0 ? updatedList[0] : undefined, 
+                diagrams: updatedList 
+              }
+            : s
+        );
+        autoSave(updatedSecs);
+        return updatedSecs;
+      });
+
+      return { ...prev, [sectionId]: updatedList };
+    });
+    toast.success("Diagram/image removed!");
+  }, [autoSave]);
+
+  // Manual optimization handler
+  const handleOptimizeDiagramImage = useCallback(async (sectionId: string, diagId: string) => {
+    toast.info("Optimizing and compressing image...");
+    let targetDiag: SectionDiagram | undefined;
+    setSectionDiagrams(prev => {
+      const currentList = prev[sectionId] || [];
+      targetDiag = currentList.find(d => d.id === diagId);
+      return prev;
+    });
+
+    if (!targetDiag || !targetDiag.imageData) {
+      toast.error("No image data to optimize");
+      return;
+    }
+
+    try {
+      const optimizedDataUrl = await optimizeImage(targetDiag.imageData, 800, 0.6);
+      setSectionDiagrams(prev => {
+        const currentList = prev[sectionId] || [];
+        const updatedList = currentList.map(d => d.id === diagId ? { ...d, imageData: optimizedDataUrl, width: "70%" } : d);
+
+        setSections(prevSecs => {
+          const updatedSecs = prevSecs.map(s =>
+            s.id === sectionId
+              ? { ...s, diagram: updatedList[0], diagrams: updatedList }
+              : s
+          );
+          autoSave(updatedSecs);
+          return updatedSecs;
+        });
+
+        return { ...prev, [sectionId]: updatedList };
+      });
+      toast.success("Image optimized and compressed!");
+    } catch (err) {
+      toast.error("Failed to optimize image");
+    }
+  }, [autoSave, optimizeImage]);
+
+  // AI Assist handler
   const handleAiAssist = useCallback(async (instruction: string) => {
     const content = currentSection?.content || "";
+
+    // Intercept instructions to minimize, maximize, or optimize diagrams locally
+    const lowerInstruction = instruction.toLowerCase();
+    if (lowerInstruction.includes("minimize") || lowerInstruction.includes("maximize") || lowerInstruction.includes("optimize")) {
+      let targetSectionId = activeSection;
+      for (const s of sections) {
+        if (lowerInstruction.includes(s.label.toLowerCase()) || lowerInstruction.includes(s.id.toLowerCase())) {
+          targetSectionId = s.id;
+          break;
+        }
+      }
+
+      let sectionDiags: SectionDiagram[] = [];
+      setSectionDiagrams(prev => {
+        sectionDiags = prev[targetSectionId] || [];
+        return prev;
+      });
+
+      if (sectionDiags.length === 0) {
+        toast.error(`No images or diagrams found in ${sections.find(s => s.id === targetSectionId)?.label || targetSectionId} to modify.`);
+        return;
+      }
+
+      // Default to target first diagram/image in that section
+      const targetDiag = sectionDiags[0];
+      const diagId = targetDiag.id || "";
+
+      if (lowerInstruction.includes("minimize")) {
+        handleResizeDiagram(targetSectionId, diagId, "40%");
+        setAiMessage("");
+        return;
+      }
+      if (lowerInstruction.includes("maximize")) {
+        handleResizeDiagram(targetSectionId, diagId, "100%");
+        setAiMessage("");
+        return;
+      }
+      if (lowerInstruction.includes("optimize")) {
+        if (targetDiag.type === "image" && targetDiag.imageData) {
+          await handleOptimizeDiagramImage(targetSectionId, diagId);
+        } else {
+          handleResizeDiagram(targetSectionId, diagId, "70%");
+          toast.success("Optimized diagram display scale!");
+        }
+        setAiMessage("");
+        return;
+      }
+    }
+
     if (!content.trim()) { toast.error("No content to improve. Write or generate content first."); return; }
 
     setIsAssisting(true);
@@ -569,7 +855,151 @@ export default function PaperEditor() {
         onError: (err) => { setIsAssisting(false); toast.error(err); },
       }
     );
-  }, [activeSection, currentSection, selectedJournal, autoSave]);
+  }, [activeSection, currentSection, sections, selectedJournal, autoSave, handleResizeDiagram, handleOptimizeDiagramImage]);
+
+  // Agentic AI Chat Assist
+  const handleAgenticAiAssist = useCallback(async (instruction: string) => {
+    if (!instruction.trim()) return;
+    
+    // Add user message to history
+    setChatHistory(prev => [...prev, { sender: "user", message: instruction }]);
+    setAiMessage("");
+    setIsAssisting(true);
+
+    // Intercept instructions to minimize, maximize, or optimize diagrams locally for ultra-fast response
+    const lowerInstruction = instruction.toLowerCase();
+    if (lowerInstruction.includes("minimize") || lowerInstruction.includes("maximize") || lowerInstruction.includes("optimize")) {
+      let targetSectionId = activeSection;
+      for (const s of sections) {
+        if (lowerInstruction.includes(s.label.toLowerCase()) || lowerInstruction.includes(s.id.toLowerCase())) {
+          targetSectionId = s.id;
+          break;
+        }
+      }
+
+      const sectionDiags = sectionDiagrams[targetSectionId] || [];
+
+      if (sectionDiags.length > 0) {
+        const targetDiag = sectionDiags[0];
+        const diagId = targetDiag.id || "";
+        const label = sections.find(s => s.id === targetSectionId)?.label || targetSectionId;
+
+        if (lowerInstruction.includes("minimize")) {
+          handleResizeDiagram(targetSectionId, diagId, "40%");
+          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully minimized the diagram in the "${label}" section to a compact 40% width.` }]);
+          setIsAssisting(false);
+          setAiMessage("");
+          return;
+        }
+        if (lowerInstruction.includes("maximize")) {
+          handleResizeDiagram(targetSectionId, diagId, "100%");
+          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully maximized the diagram in the "${label}" section to 100% full width.` }]);
+          setIsAssisting(false);
+          setAiMessage("");
+          return;
+        }
+        if (lowerInstruction.includes("optimize")) {
+          if (targetDiag.type === "image" && targetDiag.imageData) {
+            try {
+              await handleOptimizeDiagramImage(targetSectionId, diagId);
+              setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully compressed and optimized the uploaded image in the "${label}" section!` }]);
+            } catch {
+              setChatHistory(prev => [...prev, { sender: "ai", message: `I encountered an issue compressing the image in the "${label}" section.` }]);
+            }
+          } else {
+            handleResizeDiagram(targetSectionId, diagId, "70%");
+            setChatHistory(prev => [...prev, { sender: "ai", message: `I have optimized the scale of the diagram in the "${label}" section to a balanced 70% width.` }]);
+          }
+          setIsAssisting(false);
+          setAiMessage("");
+          return;
+        }
+      }
+    }
+    
+    const journalName = journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE";
+    
+    toast.info("Agent is analyzing and alter-editing your paper...");
+    
+    try {
+      const response = await agenticAiAssist({
+        instruction,
+        sections,
+        paperMeta,
+        authorDetails,
+        journal: journalName,
+        activeSectionId: activeSection
+      });
+      
+      // Add AI reply to history
+      setChatHistory(prev => [...prev, { sender: "ai", message: response.message }]);
+      
+      // Execute each action sequentially
+      if (response.actions && response.actions.length > 0) {
+        toast.info(`Executing ${response.actions.length} agentic operations...`);
+        
+        response.actions.forEach((action) => {
+          switch (action.type) {
+            case "UPDATE_SECTION_CONTENT": {
+              setSections(prev => {
+                const updated = prev.map(s => s.id === action.payload.sectionId ? { ...s, content: stripMarkdown(action.payload.content) } : s);
+                autoSave(updated);
+                return updated;
+              });
+              toast.success(`Updated content in: ${action.payload.sectionId}`);
+              break;
+            }
+            case "UPDATE_METADATA": {
+              setPaperMeta(prev => {
+                const updated = {
+                  ...prev,
+                  domain: action.payload.domain !== undefined ? action.payload.domain : prev.domain,
+                  methodology: action.payload.methodology !== undefined ? action.payload.methodology : prev.methodology,
+                  results_summary: action.payload.results_summary !== undefined ? action.payload.results_summary : prev.results_summary,
+                };
+                // Automatically auto-save updated metadata
+                autoSave(sections, updated);
+                return updated;
+              });
+              toast.success("Updated paper research details!");
+              break;
+            }
+            case "UPDATE_AUTHOR_DETAILS": {
+              setAuthorDetails(prev => {
+                const updated = {
+                  ...prev,
+                  authorNames: action.payload.authorNames !== undefined ? action.payload.authorNames : prev.authorNames,
+                  department: action.payload.department !== undefined ? action.payload.department : prev.department,
+                  institution: action.payload.institution !== undefined ? action.payload.institution : prev.institution,
+                  city: action.payload.city !== undefined ? action.payload.city : prev.city,
+                  email: action.payload.email !== undefined ? action.payload.email : prev.email,
+                };
+                return updated;
+              });
+              toast.success("Updated author affiliations!");
+              break;
+            }
+            case "RESIZE_DIAGRAM": {
+              handleResizeDiagram(action.payload.sectionId, action.payload.diagramId, action.payload.width);
+              break;
+            }
+            case "REMOVE_DIAGRAM": {
+              handleRemoveDiagram(action.payload.sectionId, action.payload.diagramId);
+              break;
+            }
+            default:
+              console.warn("Unhandled agentic action type:", (action as any).type);
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Agentic AI assist failed:", e);
+      toast.error("Failed to execute agentic command.");
+      setChatHistory(prev => [...prev, { sender: "ai", message: "Apologies, I encountered an issue modifying the document. Please let me know how to try again!" }]);
+    } finally {
+      setIsAssisting(false);
+    }
+  }, [sections, paperMeta, authorDetails, selectedJournal, autoSave, handleResizeDiagram, handleRemoveDiagram, activeSection, sectionDiagrams, handleOptimizeDiagramImage]);
 
   const handleCreatePaper = async () => {
     const title = sections.find((s) => s.id === "title")?.content || "Untitled Paper";
@@ -1292,9 +1722,9 @@ export default function PaperEditor() {
               {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
               {isHumanizing ? "Humanizing..." : "Humanize"}
             </Button>
-            {canGenerate && (
+            {activeSection !== "title" && activeSection !== "keywords" && (
               <Button variant="ghost" size="sm" className="gap-2 text-accent" onClick={() => setShowDiagramGenerator(true)} disabled={isBusy}>
-                <Image className="h-4 w-4" /> Diagram
+                <ImageIcon className="h-4 w-4" /> Diagram
               </Button>
             )}
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
@@ -1349,40 +1779,132 @@ export default function PaperEditor() {
                   )}
 
                   {/* Inline Diagram Section */}
-                  {canGenerate && ["methodology", "experimental-setup", "results", "implementation", "introduction", "background"].includes(activeSection) && (
+                  {activeSection !== "title" && activeSection !== "keywords" && (
                     <div className="mt-6 border-t border-border pt-4">
-                      {sectionDiagrams[activeSection] ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                              <Image className="h-4 w-4 text-accent" /> Section Diagram
-                            </h3>
-                            <div className="flex gap-2">
-                              <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => setShowDiagramGenerator(true)}>
-                                Regenerate
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-border bg-muted/30 p-4 overflow-auto">
-                            {sectionDiagrams[activeSection].type === "mermaid" && sectionDiagrams[activeSection].svg ? (
-                              <div className="flex justify-center" dangerouslySetInnerHTML={{ __html: sectionDiagrams[activeSection].svg! }} />
-                            ) : sectionDiagrams[activeSection].type === "image" && sectionDiagrams[activeSection].imageData ? (
-                              <img src={sectionDiagrams[activeSection].imageData} alt={sectionDiagrams[activeSection].caption} className="max-w-full mx-auto rounded-lg" />
-                            ) : null}
-                          </div>
-                          <p className="text-xs text-muted-foreground italic text-center">{sectionDiagrams[activeSection].caption}</p>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <ImageIcon className="h-4 w-4 text-accent" /> Section Diagrams ({sectionDiagrams[activeSection]?.length || 0})
+                        </h3>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => setShowDiagramGenerator(true)}>
+                            + Generate Diagram
+                          </Button>
+                          <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => fileUploadRef.current?.click()}>
+                            + Upload Image
+                          </Button>
+                        </div>
+                      </div>
+
+                      {sectionDiagrams[activeSection] && sectionDiagrams[activeSection].length > 0 ? (
+                        <div className="space-y-6">
+                          {sectionDiagrams[activeSection].map((diag, index) => {
+                            const diagId = diag.id || `diag-${index}`;
+                            const isMermaid = diag.type === "mermaid";
+                            const widthVal = diag.width || "100%";
+                            
+                            return (
+                              <div key={diagId} className="border border-border rounded-xl p-4 bg-card shadow-sm space-y-3 relative group">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Figure {index + 1}: {isMermaid ? "AI Diagram" : "Uploaded Image"}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {/* Sizing Controls */}
+                                    <div className="flex items-center rounded-lg border border-border bg-muted p-0.5 text-[11px]">
+                                      {[
+                                        { label: "Min (40%)", value: "40%" },
+                                        { label: "Balanced (70%)", value: "70%" },
+                                        { label: "Max (100%)", value: "100%" }
+                                      ].map((sizeOpt) => (
+                                        <button
+                                          key={sizeOpt.value}
+                                          onClick={() => handleResizeDiagram(activeSection, diagId, sizeOpt.value)}
+                                          className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
+                                            widthVal === sizeOpt.value ? "bg-card text-foreground shadow-sm font-semibold" : "text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          {sizeOpt.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    
+                                    {/* Optimize button for manual compression */}
+                                    {!isMermaid && diag.imageData && (
+                                      <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        className="h-6 text-xs px-2 hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-500/30"
+                                        onClick={() => handleOptimizeDiagramImage(activeSection, diagId)}
+                                      >
+                                        Optimize
+                                      </Button>
+                                    )}
+
+                                    {/* Remove / Cancel button */}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg animate-pulse"
+                                      onClick={() => handleRemoveDiagram(activeSection, diagId)}
+                                      title="Remove Diagram"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                
+                                <div className="rounded-lg border border-border bg-muted/20 p-4 overflow-auto flex justify-center">
+                                  {isMermaid && diag.svg ? (
+                                    <div 
+                                      style={{ width: widthVal, maxWidth: "100%" }}
+                                      className="flex justify-center" 
+                                      dangerouslySetInnerHTML={{ __html: diag.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} 
+                                    />
+                                  ) : diag.imageData ? (
+                                    <img 
+                                      src={diag.imageData} 
+                                      alt={diag.caption} 
+                                      style={{ width: widthVal, height: "auto" }}
+                                      className="max-w-full rounded-lg object-contain mx-auto shadow-sm" 
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground italic">No image source</span>
+                                  )}
+                                </div>
+
+                                <div className="flex gap-2 items-center">
+                                  <span className="text-xs text-muted-foreground shrink-0">Caption:</span>
+                                  <input
+                                    type="text"
+                                    className="flex-1 text-xs bg-transparent border-b border-border focus:border-accent outline-none text-foreground py-0.5"
+                                    value={diag.caption}
+                                    onChange={(e) => handleUpdateCaption(activeSection, diagId, e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : currentSection?.content.trim() ? (
-                        <button
-                          onClick={() => setShowDiagramGenerator(true)}
-                          className="w-full rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-4 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
-                        >
-                          <Image className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
-                          <p className="text-sm font-medium text-foreground">Generate a diagram for this section</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            AI will auto-detect your paper type (hardware/software) and create the appropriate diagram
-                          </p>
-                        </button>
+                        <div className="flex gap-4">
+                          <button
+                            onClick={() => setShowDiagramGenerator(true)}
+                            className="flex-1 rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
+                          >
+                            <ImageIcon className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
+                            <p className="text-sm font-medium text-foreground">Generate AI Diagram</p>
+                            <p className="text-xs text-muted-foreground mt-1">AI creates tailored flows or architectures</p>
+                          </button>
+                          
+                          <button
+                            onClick={() => fileUploadRef.current?.click()}
+                            className="flex-1 rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
+                          >
+                            <Upload className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
+                            <p className="text-sm font-medium text-foreground">Upload Image File</p>
+                            <p className="text-xs text-muted-foreground mt-1">Supports drag-and-drop or browsing local files</p>
+                          </button>
+                        </div>
                       ) : null}
                     </div>
                   )}
@@ -1417,27 +1939,60 @@ export default function PaperEditor() {
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {canGenerate && (
-                    <button onClick={handleGenerateSection} disabled={isBusy}
-                      className="w-full rounded-lg bg-accent/10 border border-accent/20 p-3 text-sm text-left hover:bg-accent/20 transition-colors disabled:opacity-50">
-                      <p className="font-medium text-accent-foreground flex items-center gap-1">
-                        <Sparkles className="h-3.5 w-3.5" /> Generate {currentSection?.label}
-                      </p>
-                      <p className="text-muted-foreground mt-1 text-xs">AI writes this entire section using your paper context</p>
-                    </button>
-                  )}
-                  <div className="rounded-lg bg-muted p-3 text-sm">
-                    <p className="font-medium text-foreground mb-2">Quick Improvements</p>
-                    {quickActions.map((action) => (
-                      <button key={action} onClick={() => handleAiAssist(action)} disabled={isBusy}
-                        className="block w-full text-left rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent/10 hover:text-accent-foreground transition-colors mt-0.5 disabled:opacity-50">
-                        {action}
-                      </button>
-                    ))}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col min-h-0 bg-card/50">
+                  {/* Chat Messages Thread */}
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1 scrollbar-thin flex flex-col">
+                    {chatHistory.map((chat, idx) => {
+                      const isAi = chat.sender === "ai";
+                      return (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`flex flex-col max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                            isAi 
+                              ? "bg-muted text-foreground self-start rounded-tl-none border border-border" 
+                              : "bg-accent text-accent-foreground self-end rounded-tr-none shadow-sm"
+                          }`}
+                        >
+                          <span className="font-semibold text-[9px] opacity-70 mb-0.5 tracking-wider uppercase">
+                            {isAi ? "🤖 Agentic Co-Author" : "👤 You"}
+                          </span>
+                          <span className="whitespace-pre-wrap">{chat.message}</span>
+                        </motion.div>
+                      );
+                    })}
+                    {isAssisting && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex items-center gap-1.5 text-xs text-accent bg-accent/5 self-start px-3 py-2 rounded-2xl border border-accent/15"
+                      >
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Agent alter-editing paper...</span>
+                      </motion.div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Quick Improvements (Collapsible/Mini) */}
+                  <div className="border-t border-border/50 pt-3 mt-auto shrink-0">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Quick Section Edits</p>
+                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                      {quickActions.map((action) => (
+                        <button 
+                          key={action} 
+                          onClick={() => handleAgenticAiAssist(action)} 
+                          disabled={isBusy}
+                          className="text-[10px] bg-muted/60 text-muted-foreground hover:bg-accent/10 hover:text-accent border border-border/50 rounded-lg px-2 py-1 transition-colors disabled:opacity-40"
+                        >
+                          {action}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <div className="border-t border-border p-3 space-y-2">
+                <div className="border-t border-border p-3 space-y-2 bg-card shrink-0">
                   {/* Upload data hint */}
                   <button
                     onClick={() => fileUploadRef.current?.click()}
@@ -1447,24 +2002,17 @@ export default function PaperEditor() {
                     <Upload className="h-3.5 w-3.5 mx-auto mb-1 text-accent/60 group-hover:text-accent" />
                     <span className="text-muted-foreground group-hover:text-accent-foreground">Upload text data or images</span>
                   </button>
-                  <input
-                    ref={fileUploadRef}
-                    type="file"
-                    className="hidden"
-                    accept="image/*,.txt,.csv,.tsv,.json,.md,.log,.dat,.xml,.yaml,.yml,.tex,.bib,.py,.r,.m,.sql"
-                    onChange={handleFileUpload}
-                  />
                   <div className="flex gap-2">
                     <input
                       className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="Custom instruction..."
+                      placeholder="Instruct agent to edit paper..."
                       value={aiMessage}
                       onChange={(e) => setAiMessage(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && aiMessage.trim()) handleAiAssist(aiMessage); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && aiMessage.trim()) handleAgenticAiAssist(aiMessage); }}
                       disabled={isBusy}
                     />
                     <Button variant="hero" size="icon" className="shrink-0 h-9 w-9"
-                      onClick={() => { if (aiMessage.trim()) handleAiAssist(aiMessage); }} disabled={isBusy || !aiMessage.trim()}>
+                      onClick={() => { if (aiMessage.trim()) handleAgenticAiAssist(aiMessage); }} disabled={isBusy || !aiMessage.trim()}>
                       {isAssisting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
@@ -1510,13 +2058,13 @@ export default function PaperEditor() {
               {isCompletingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               <span className="text-[10px] font-medium">Complete</span>
             </button>
-            {canGenerate && (
+            {activeSection !== "title" && activeSection !== "keywords" && (
               <button
                 onClick={() => setShowDiagramGenerator(true)}
                 disabled={isBusy}
                 className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 shrink-0"
               >
-                <Image className="h-4 w-4" />
+                <ImageIcon className="h-4 w-4" />
                 <span className="text-[10px] font-medium">Diagram</span>
               </button>
             )}
@@ -1935,37 +2483,66 @@ export default function PaperEditor() {
         methodology={paperMeta.methodology}
         results_summary={paperMeta.results_summary}
         onDiagramGenerated={(sec, data) => {
-          setSectionDiagrams(prev => ({ ...prev, [sec]: data }));
-          // Eagerly pre-cache the PNG for instant export later
-          preCacheDiagramPng(data);
-          // Persist diagram on the section so it appears in Paper View & survives reload
-          setSections(prev => {
-            const updated = prev.map(s => {
-              if (s.id === sec) {
-                let newContent = s.content;
-                if (data.type === "mermaid" && data.code) {
-                  // Replace existing mermaid block if there is one, otherwise append
-                  if (newContent.includes("```mermaid")) {
-                    newContent = newContent.replace(/```mermaid[\s\S]*?```/g, `\`\`\`mermaid\n${data.code}\n\`\`\``);
-                  } else {
-                    newContent = newContent.trim() + `\n\n\`\`\`mermaid\n${data.code}\n\`\`\`\n\n`;
-                  }
-                } else if (data.type === "image" && data.imageData) {
-                  // Append markdown image if not already present
-                  const imgMarkdown = `![${data.caption || "Section Diagram"}](${data.imageData})`;
-                  if (newContent.includes("![")) {
-                    newContent = newContent.replace(/!\[.*?\]\(.*?\)/g, imgMarkdown);
-                  } else {
-                    newContent = newContent.trim() + `\n\n${imgMarkdown}\n\n`;
-                  }
-                }
-                return { ...s, content: newContent, diagram: data };
+          const renderPngAndSave = async () => {
+            let finalData: SectionDiagram = { 
+              ...data, 
+              id: Math.random().toString(36).substring(2, 9), 
+              width: "100%" 
+            };
+            
+            if (data.type === "mermaid" && data.svg) {
+              try {
+                // Eagerly pre-convert Mermaid to PNG for instant compilation later!
+                const pngBase64 = await convertSvgToPng(data.svg);
+                finalData.imageData = pngBase64;
+              } catch (e) {
+                console.error("Failed to pre-convert Mermaid SVG to PNG:", e);
               }
-              return s;
+            }
+
+            setSectionDiagrams(prev => {
+              const currentList = prev[sec] || [];
+              const updatedList = [...currentList, finalData];
+              
+              setSections(prevSecs => {
+                const updatedSecs = prevSecs.map(s => {
+                  if (s.id === sec) {
+                    let newContent = s.content;
+                    if (finalData.type === "mermaid" && finalData.code) {
+                      // Replace existing mermaid block if there is one, otherwise append
+                      if (newContent.includes("```mermaid")) {
+                        newContent = newContent.replace(/```mermaid[\s\S]*?```/g, `\`\`\`mermaid\n${finalData.code}\n\`\`\``);
+                      } else {
+                        newContent = newContent.trim() + `\n\n\`\`\`mermaid\n${finalData.code}\n\`\`\`\n\n`;
+                      }
+                    } else if (finalData.type === "image" && finalData.imageData) {
+                      const imgMarkdown = `![${finalData.caption || "Section Diagram"}](${finalData.imageData})`;
+                      if (newContent.includes("![")) {
+                        newContent = newContent.replace(/!\[.*?\]\(.*?\)/g, imgMarkdown);
+                      } else {
+                        newContent = newContent.trim() + `\n\n${imgMarkdown}\n\n`;
+                      }
+                    }
+                    return { 
+                      ...s, 
+                      content: newContent, 
+                      diagram: updatedList[0],
+                      diagrams: updatedList 
+                    };
+                  }
+                  return s;
+                });
+                autoSave(updatedSecs);
+                return updatedSecs;
+              });
+
+              return { ...prev, [sec]: updatedList };
             });
-            autoSave(updated);
-            return updated;
-          });
+
+            toast.success("AI Diagram generated and pre-cached successfully!");
+          };
+
+          renderPngAndSave();
         }}
       />
 
@@ -2130,6 +2707,13 @@ export default function PaperEditor() {
           </motion.div>
         )}
       </AnimatePresence>
+      <input
+        ref={fileUploadRef}
+        type="file"
+        className="hidden"
+        accept="image/*,.txt,.csv,.tsv,.json,.md,.log,.dat,.xml,.yaml,.yml,.tex,.bib,.py,.r,.m,.sql"
+        onChange={handleFileUpload}
+      />
     </div>
   );
 }

@@ -166,6 +166,124 @@ Apply the instruction. Output only the improved text.`;
   await nvidiaStream(prompt, opts, 2048);
 }
 
+export type AgenticAction =
+  | { type: "UPDATE_SECTION_CONTENT"; payload: { sectionId: string; content: string } }
+  | { type: "UPDATE_METADATA"; payload: { domain?: string; methodology?: string; results_summary?: string } }
+  | { type: "UPDATE_AUTHOR_DETAILS"; payload: { authorNames?: string[]; department?: string; institution?: string; city?: string; email?: string } }
+  | { type: "RESIZE_DIAGRAM"; payload: { sectionId: string; diagramId: string; width: string } }
+  | { type: "REMOVE_DIAGRAM"; payload: { sectionId: string; diagramId: string } };
+
+export type AgenticResponse = {
+  message: string;
+  actions: AgenticAction[];
+};
+
+export async function agenticAiAssist(
+  params: {
+    instruction: string;
+    sections: any[];
+    paperMeta: { domain: string; methodology: string; results_summary: string };
+    authorDetails: any;
+    journal: string;
+    activeSectionId?: string;
+  }
+): Promise<AgenticResponse> {
+  const sectionsSummary = params.sections
+    .map(s => `ID: "${s.id}", Label: "${s.label}", Length: ${s.content?.length || 0} characters. Content: "${s.content?.slice(0, 800) || ""}"`)
+    .join("\n\n");
+
+  const activeSectionLabel = params.sections.find(s => s.id === params.activeSectionId)?.label || params.activeSectionId || "None";
+
+  const prompt = `You are an elite Agentic AI Academic Assistant for PaperForge research editor.
+The user gave this instruction: "${params.instruction}".
+Journal Style: ${params.journal}
+Active Section in Editor: "${activeSectionLabel}" (ID: "${params.activeSectionId || ""}")
+
+You have capability to make changes to the entire paper by returning a list of structured actions.
+Here is the current state of the paper:
+
+### Paper Metadata:
+Domain: "${params.paperMeta.domain || ""}"
+Methodology Summary: "${params.paperMeta.methodology || ""}"
+Results Summary: "${params.paperMeta.results_summary || ""}"
+
+### Author Details:
+Authors: ${JSON.stringify(params.authorDetails.authorNames || [])}
+Department: "${params.authorDetails.department || ""}"
+Institution: "${params.authorDetails.institution || ""}"
+City: "${params.authorDetails.city || ""}"
+Email: "${params.authorDetails.email || ""}"
+
+### Sections and Content:
+${sectionsSummary}
+
+## Your Task:
+Interpret the user's instruction and decide which actions are needed to fulfill it. You can generate multiple actions to edit the paper.
+Always output a valid JSON object in this exact format:
+{
+  "message": "A polite explanation of what changes you have made to fulfill their instruction.",
+  "actions": [
+    {
+      "type": "UPDATE_SECTION_CONTENT",
+      "payload": {
+        "sectionId": "section_id",
+        "content": "new full content for this section, written in dense academic journal style"
+      }
+    },
+    {
+      "type": "UPDATE_METADATA",
+      "payload": {
+        "domain": "new domain if requested",
+        "methodology": "new methodology summary if requested",
+        "results_summary": "new results summary if requested"
+      }
+    },
+    {
+      "type": "UPDATE_AUTHOR_DETAILS",
+      "payload": {
+        "authorNames": ["John Doe", "Sarah Jenkins"],
+        "department": "...",
+        "institution": "...",
+        "city": "...",
+        "email": "..."
+      }
+    },
+    {
+      "type": "RESIZE_DIAGRAM",
+      "payload": {
+        "sectionId": "section_id",
+        "diagramId": "diagram_id",
+        "width": "40% | 70% | 100%"
+      }
+    },
+    {
+      "type": "REMOVE_DIAGRAM",
+      "payload": {
+        "sectionId": "section_id",
+        "diagramId": "diagram_id"
+      }
+    }
+  ]
+}
+
+Note:
+- Only generate actions that are actually requested or highly relevant.
+- Do NOT alter metadata or authors unless the user's instruction asks to change them.
+- For UPDATE_SECTION_CONTENT, write high-quality, professional, IEEE-grade academic content.
+- Respond with a valid JSON object ONLY. No markdown wrappers or explanation outside the JSON.`;
+
+  try {
+    const res = await nvidiaJSON(prompt, 2048);
+    return res as AgenticResponse;
+  } catch (e) {
+    console.error("agenticAiAssist API call failed:", e);
+    return {
+      message: "I encountered an error processing your instruction, but I am ready for other commands.",
+      actions: []
+    };
+  }
+}
+
 export async function humanizeText(
   params: { content: string; journal: string },
   opts: StreamOptions

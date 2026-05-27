@@ -730,14 +730,18 @@ export async function exportToWord(
   };
 
   onProgress?.(2); // Step 2: Rendering diagrams & images
-  const diagramPngs: Record<string, string | null> = {};
-  const diagramInfos: Record<string, any> = {};
+  const sectionDiagramPngs: Record<string, (string | null)[]> = {};
+  const sectionDiagramInfos: Record<string, any[]> = {};
   if (!skipDiagrams) {
     const promises = bodySections.map(async (s) => {
-      const diag = await getDiagramForSection(s);
-      if (diag) {
-        diagramInfos[s.id] = diag;
-        diagramPngs[s.id] = await ensurePng(diag);
+      const diags = s.diagrams || (s.diagram ? [s.diagram] : []);
+      if (diags.length > 0) {
+        sectionDiagramInfos[s.id] = diags;
+        const pngs = await Promise.all(diags.map(async (d) => {
+          if (d.imageData && d.imageData.startsWith("data:")) return d.imageData;
+          return ensurePng(d);
+        }));
+        sectionDiagramPngs[s.id] = pngs;
       }
     });
     await Promise.all(promises);
@@ -793,15 +797,25 @@ export async function exportToWord(
     const parasHtml = paras.map((p, i) => `<p class="${i === 0 ? 'body-para-first' : 'body-para'}">${escapeHtml(p)}</p>`).join("");
     
     let diagramHtml = "";
-    const imgData = diagramPngs[s.id] || diagramInfos[s.id]?.imageData;
-    if (imgData) {
-      diagramHtml = `
-        <div style="text-align: center; margin: 12pt 0; page-break-inside: avoid;">
-          <img src="${imgData}" alt="Diagram for ${escapeHtml(s.label)}" style="max-width: 85%; height: auto; display: block; margin: 0 auto; border: 0.5pt solid #ddd;" />
-          <p style="text-align: center; font-style: italic; font-size: ${config.bodySize - 1}pt; margin-top: 4pt; color: #444;">Fig. ${escapeHtml(s.label)}: Generated diagram representation.</p>
-        </div>
-      `;
-    }
+    const diags = sectionDiagramInfos[s.id] || [];
+    const pngs = sectionDiagramPngs[s.id] || [];
+    diags.forEach((diagram, dIdx) => {
+      const imgData = pngs[dIdx] || diagram.imageData;
+      if (imgData) {
+        let widthStyle = "85%";
+        if (diagram.width === "40%") widthStyle = "40%";
+        else if (diagram.width === "70%") widthStyle = "70%";
+        else if (diagram.width === "100%") widthStyle = "95%";
+        else if (diagram.width) widthStyle = diagram.width;
+
+        diagramHtml += `
+          <div style="text-align: center; margin: 12pt 0; page-break-inside: avoid;">
+            <img src="${imgData}" alt="Diagram for ${escapeHtml(s.label)}" style="max-width: 95%; width: ${widthStyle}; height: auto; display: block; margin: 0 auto; border: 0.5pt solid #ddd;" />
+            <p style="text-align: center; font-style: italic; font-size: ${config.bodySize - 1}pt; margin-top: 4pt; color: #444;">Fig. ${escapeHtml(s.label)}: ${escapeHtml(diagram.caption || "Generated diagram representation.")}</p>
+          </div>
+        `;
+      }
+    });
 
     return `<h2>${escapeHtml(makeHeading(s.label))}</h2>${parasHtml}${diagramHtml}`;
   }).join("")}
@@ -857,16 +871,24 @@ ${escapeLatex(abstract)}
     const cleanContent = section.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
     latex += `\\section{${escapeLatex(section.label)}}\n${escapeLatex(cleanContent)}\n\n`;
 
-    const mermaidCode = extractMermaidFromContent(section.content);
-    if (section.diagram || mermaidCode) {
+    const diags = section.diagrams || (section.diagram ? [section.diagram] : []);
+    diags.forEach((diagram, dIdx) => {
       latex += `\\begin{figure}[htbp]\n`;
       latex += `\\centering\n`;
-      latex += `\\includegraphics[width=0.85\\textwidth]{diagram-${section.id}.png}\n`;
-      const caption = section.diagram?.caption || `Generated diagram for ${section.label}`;
+      let widthStyle = "0.85";
+      if (diagram.width === "40%") widthStyle = "0.40";
+      else if (diagram.width === "70%") widthStyle = "0.70";
+      else if (diagram.width === "100%") widthStyle = "0.95";
+      else if (diagram.width && diagram.width.endsWith("%")) {
+        const p = parseFloat(diagram.width);
+        if (!isNaN(p)) widthStyle = (p / 100).toFixed(2);
+      }
+      latex += `\\includegraphics[width=${widthStyle}\\textwidth]{diagram-${section.id}-${dIdx}.png}\n`;
+      const caption = diagram.caption || `Generated diagram for ${section.label}`;
       latex += `\\caption{${escapeLatex(caption)}}\n`;
-      latex += `\\label{fig:${section.id}}\n`;
+      latex += `\\label{fig:${section.id}-${dIdx}}\n`;
       latex += `\\end{figure}\n\n`;
-    }
+    });
   }
 
   if (refSection?.content.trim()) {
