@@ -708,7 +708,22 @@ export function sanitizeMermaidCode(code: string): string {
       lower.startsWith("sequencediagram") ||
       lower.startsWith("classdiagram") ||
       lower.startsWith("statediagram") ||
-      lower.startsWith("%%")
+      lower.startsWith("erdiagram") ||
+      lower.startsWith("gantt") ||
+      lower.startsWith("pie") ||
+      lower.startsWith("%%") ||
+      lower.startsWith("subgraph") ||
+      lower === "end" ||
+      lower.startsWith("participant") ||
+      lower.startsWith("activate") ||
+      lower.startsWith("deactivate") ||
+      lower.startsWith("note ") ||
+      lower.startsWith("loop ") ||
+      lower.startsWith("alt ") ||
+      lower.startsWith("else") ||
+      lower.startsWith("opt ") ||
+      lower.startsWith("class ") ||
+      lower.startsWith("direction ")
     ) {
       return l;
     }
@@ -767,32 +782,99 @@ export async function generateDiagram(
   }
 ): Promise<DiagramResult> {
   const paperTitleSafe = params.title.replace(/"/g, '\\"');
+  const diagramType = params.diagram_type || "Flowchart";
+
+  // Map each diagram type to a specific Mermaid strategy and example
+  const diagramStrategies: Record<string, string> = {
+    "Flowchart": `Use "flowchart TD" (top-down) or "flowchart LR" (left-right). Show process steps, decision diamonds, and data flow.
+Example: flowchart TD\\n  A["Start"] --> B{"Decision"}\\n  B -->|Yes| C["Process A"]\\n  B -->|No| D["Process B"]\\n  C --> E["End"]\\n  D --> E`,
+
+    "Architecture Diagram": `Use "flowchart TD" or "flowchart LR". Show system components as rectangular nodes, databases as cylindrical nodes (()), and connections between layers.
+Example: flowchart LR\\n  subgraph Frontend\\n    A["UI Layer"]\\n  end\\n  subgraph Backend\\n    B["API Server"]\\n    C[("Database")]\\n  end\\n  A --> B --> C`,
+
+    "Sequence Diagram": `Use "sequenceDiagram". Show interactions between participants with arrows and activation boxes.
+Example: sequenceDiagram\\n  participant C as Client\\n  participant S as Server\\n  participant DB as Database\\n  C->>S: Request Data\\n  activate S\\n  S->>DB: Query\\n  DB-->>S: Results\\n  S-->>C: Response\\n  deactivate S`,
+
+    "Class Diagram": `Use "classDiagram". Show classes with attributes and methods, inheritance, and relationships.
+Example: classDiagram\\n  class Animal {\\n    +String name\\n    +int age\\n    +makeSound()\\n  }\\n  class Dog {\\n    +fetch()\\n  }\\n  Animal <|-- Dog`,
+
+    "State Diagram": `Use "stateDiagram-v2". Show states and transitions.
+Example: stateDiagram-v2\\n  [*] --> Idle\\n  Idle --> Processing: Start\\n  Processing --> Complete: Success\\n  Processing --> Error: Failure\\n  Error --> Idle: Reset\\n  Complete --> [*]`,
+
+    "State Machine": `Use "stateDiagram-v2". Show finite state machine with states, transitions, and guards.
+Example: stateDiagram-v2\\n  [*] --> RESET\\n  RESET --> IDLE: Init Complete\\n  IDLE --> ACTIVE: Enable Signal\\n  ACTIVE --> IDLE: Disable\\n  ACTIVE --> ERROR: Fault Detected\\n  ERROR --> RESET: Reset Signal`,
+
+    "Data Flow Diagram": `Use "flowchart LR". Show data sources, processes, and data stores. Use rectangles for processes, cylinders (()) for data stores, and parallelograms for external entities.
+Example: flowchart LR\\n  A["External Source"] --> B["Process 1"]\\n  B --> C[("Data Store")]\\n  C --> D["Process 2"]\\n  D --> E["Output"]`,
+
+    "Activity Diagram": `Use "flowchart TD". Show activities, decisions, forks, and joins to represent workflow.
+Example: flowchart TD\\n  A["Start"] --> B["Activity 1"]\\n  B --> C{"Condition"}\\n  C -->|True| D["Activity 2a"]\\n  C -->|False| E["Activity 2b"]\\n  D --> F["Join"]\\n  E --> F\\n  F --> G["End"]`,
+
+    "Use Case Diagram": `Use "flowchart LR". Show actors on the left as rounded nodes, use cases as rectangular nodes in a subgraph representing the system boundary.
+Example: flowchart LR\\n  A(["Actor 1"])\\n  B(["Actor 2"])\\n  subgraph System\\n    UC1["Use Case 1"]\\n    UC2["Use Case 2"]\\n    UC3["Use Case 3"]\\n  end\\n  A --> UC1\\n  A --> UC2\\n  B --> UC2\\n  B --> UC3`,
+
+    "Block Diagram": `Use "flowchart LR" or "flowchart TD". Show major functional blocks as large rectangular nodes. Use subgraphs for grouping related blocks. Show signal/data flow between blocks with labeled arrows.
+Example: flowchart LR\\n  subgraph Input Stage\\n    A["Sensor"]\\n    B["ADC"]\\n  end\\n  subgraph Processing\\n    C["Microcontroller"]\\n    D["DSP"]\\n  end\\n  subgraph Output Stage\\n    E["DAC"]\\n    F["Actuator"]\\n  end\\n  A --> B --> C --> D --> E --> F`,
+
+    "Pin Diagram": `Use "flowchart LR". Create a pin diagram by placing the IC/chip as a central node with pins radiating outward. Use a subgraph for the IC body. Left pins connect from the left, right pins connect to the right. Label each pin with its name and number.
+Example: flowchart LR\\n  P1["1: VCC"] --> IC\\n  P2["2: GND"] --> IC\\n  P3["3: IN1"] --> IC\\n  P4["4: IN2"] --> IC\\n  subgraph IC["IC Chip Name"]\\n    CENTER["  "]\\n  end\\n  IC --> P5["5: OUT1"]\\n  IC --> P6["6: OUT2"]\\n  IC --> P7["7: CLK"]\\n  IC --> P8["8: RST"]`,
+
+    "Circuit Diagram": `Use "flowchart LR" or "flowchart TD". Represent components (resistors, capacitors, transistors, ICs) as labeled nodes. Show connections as arrows. Use descriptive labels with component values.
+Example: flowchart LR\\n  VCC["VCC 5V"] --> R1["R1: 10k Ohm"]\\n  R1 --> Q1["Q1: NPN BJT Base"]\\n  Q1 --> R2["R2: 1k Ohm"]\\n  R2 --> GND["GND"]\\n  VCC --> R3["R3: 4.7k Ohm"]\\n  R3 --> Q1`,
+
+    "Schematic": `Use "flowchart TD" or "flowchart LR". Show electronic components with labeled values, power rails at top/bottom, signal paths with directional arrows.
+Example: flowchart TD\\n  VDD["VDD +3.3V"]\\n  VDD --> R1["R1: 10K"]\\n  R1 --> NODE1["Node A"]\\n  NODE1 --> C1["C1: 100nF"]\\n  C1 --> GND1["GND"]\\n  NODE1 --> U1["U1: Op-Amp Input"]\\n  U1 --> OUT["Output"]`,
+
+    "Timing Diagram": `Use "flowchart LR". Represent timing signals as sequential states using chains of nodes. Each signal is a horizontal row. Use labels to show HIGH/LOW states and transitions.
+Example: flowchart LR\\n  subgraph CLK Signal\\n    C1["HIGH"] --> C2["LOW"] --> C3["HIGH"] --> C4["LOW"]\\n  end\\n  subgraph Data Signal\\n    D1["LOW"] --> D2["LOW"] --> D3["HIGH"] --> D4["HIGH"]\\n  end\\n  subgraph Enable Signal\\n    E1["LOW"] --> E2["HIGH"] --> E3["HIGH"] --> E4["LOW"]\\n  end`,
+
+    "Wiring Diagram": `Use "flowchart LR". Show components as nodes with labeled connection points. Use colored/labeled arrows to indicate wire connections between terminals.
+Example: flowchart LR\\n  subgraph Power Supply\\n    PS_P["+12V"]\\n    PS_N["GND"]\\n  end\\n  subgraph Motor Driver\\n    MD_IN["Input"]\\n    MD_OUT["Output"]\\n    MD_GND["GND"]\\n  end\\n  subgraph Motor\\n    M_P["M+"]\\n    M_N["M-"]\\n  end\\n  PS_P -->|"Red Wire"| MD_IN\\n  MD_OUT -->|"Blue Wire"| M_P\\n  M_N -->|"Black Wire"| MD_GND\\n  PS_N -->|"Black Wire"| MD_GND`,
+
+    "PCB Layout": `Use "flowchart TD". Show component placement zones using subgraphs representing PCB regions. Show component footprints as nodes with designators and trace connections.
+Example: flowchart TD\\n  subgraph Top Layer\\n    U1["U1: MCU"]\\n    U2["U2: Power Reg"]\\n    J1["J1: USB Connector"]\\n  end\\n  subgraph Bottom Layer\\n    C1["C1: 100nF"]\\n    C2["C2: 10uF"]\\n    R1["R1: 10K"]\\n  end\\n  J1 -->|"VBUS"| U2\\n  U2 -->|"3.3V"| U1\\n  U1 -->|"Decoupling"| C1\\n  U2 -->|"Bulk Cap"| C2`,
+  };
+
+  const strategy = diagramStrategies[diagramType] || diagramStrategies["Flowchart"];
+
   try {
+    let diagramInstruction = "";
+    if (!params.diagram_type || params.diagram_type === "Auto-Detect") {
+      diagramInstruction = `Requested Diagram Type: "Auto-Detect"
+Choose the single most appropriate diagram type from this list based on the section content:
+[Flowchart, Architecture Diagram, Sequence Diagram, Class Diagram, State Diagram, State Machine, Data Flow Diagram, Activity Diagram, Use Case Diagram, Block Diagram, Pin Diagram, Circuit Diagram, Schematic, Timing Diagram, Wiring Diagram, PCB Layout].
+Make sure to format it correctly according to Mermaid rules for that specific type.`;
+    } else {
+      diagramInstruction = `Requested Diagram Type: "${diagramType}".
+## How to create a "${diagramType}" in Mermaid:
+${strategy}`;
+    }
+
     const prompt = `Create a clean, valid Mermaid.js diagram for the paper "${params.title}" (${params.domain}), section: ${params.section}.
-Diagram Type: ${params.diagram_type || "flowchart"}.
+${diagramInstruction}
 ${params.description ? `Specific request: ${params.description}` : ""}
 
-CRITICAL RULES for valid Mermaid syntax:
-1. The diagram code MUST start with a valid diagram type declaration, e.g. "graph TD", "flowchart TD", "sequenceDiagram", "classDiagram", or "stateDiagram-v2".
+## CRITICAL RULES for valid Mermaid syntax:
+1. Do NOT always default to "graph TD" or "flowchart TD" — match the diagram type requested (or chosen, if Auto-Detect).
 2. EVERY node label containing spaces, parentheses, brackets, colons, slashes, or special characters MUST be enclosed in double quotes.
    - WRONG: A[Data (Pre-processed)] --> B(Model (CNN))
    - RIGHT: A["Data (Pre-processed)"] --> B["Model (CNN)"]
-   - WRONG: A -->|Method: PCA| B
-   - RIGHT: A -->|PCA| B
 3. Avoid any nested quotes. Keep labels simple, concise, and clean.
 4. Do not use any special HTML/XML tags, brackets, or emojis inside node text.
 5. Do not include markdown formatting (like \`\`\`mermaid) inside the code field.
+6. Make the diagram detailed and relevant to the paper topic. Include at least 6-10 nodes for non-trivial diagrams.
+7. Use subgraphs where appropriate to group related components.
 
 Return exactly this JSON structure:
 {
   "success": true,
   "paperType": "${params.force_type || "software"}",
   "type": "mermaid",
-  "code": "graph TD\\n  A[\\\"Input\\\"] --> B[\\\"Output\\\"]",
-  "caption": "A concise academic figure caption"
+  "code": "<valid mermaid code here with \\\\n for newlines>",
+  "caption": "A concise academic figure caption describing the ${diagramType}"
 }`;
 
-    const res = await nvidiaJSON(prompt, 600) as DiagramResult;
+    const res = await nvidiaJSON(prompt, 800) as DiagramResult;
     if (res && res.code) {
       res.code = sanitizeMermaidCode(res.code);
     }

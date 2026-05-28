@@ -69,7 +69,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
   const abstractSection = sections.find((s) => s.id === "abstract");
   const keywordsSection = sections.find((s) => s.id === "keywords");
   const ccsSection = sections.find((s) => s.id === "ccs-concepts");
-  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.content.trim());
+  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && (s.content.trim() || s.diagram || (s.diagrams && s.diagrams.length > 0)));
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
   const names = authorDetails?.authorNames?.filter(n => n.trim()) || [];
@@ -128,7 +128,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
         <figure key={d.id || index} style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
           {d.type === "mermaid" && d.svg ? (
             <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: widthStyle, margin: "0 auto", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
-          ) : d.type === "image" && d.imageData ? (
+          ) : d.imageData ? (
             <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: widthStyle, height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
           ) : null}
           <figcaption style={{

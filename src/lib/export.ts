@@ -138,8 +138,8 @@ function extractMermaidFromContent(content: string): string | null {
   return match ? match[1].trim() : null;
 }
 
-async function getDiagramForSection(s: PaperSection): Promise<{ type: "mermaid" | "image"; svg?: string; imageData?: string; caption: string } | null> {
-  if (s.diagram) return s.diagram;
+async function getDiagramForSection(s: PaperSection): Promise<{ type: "mermaid" | "image"; svg?: string; imageData?: string; caption: string; width?: string } | null> {
+  if (s.diagram) return { ...s.diagram, width: s.diagram.width };
   
   const mermaidCode = extractMermaidFromContent(s.content);
   if (mermaidCode) {
@@ -388,18 +388,22 @@ export async function exportToPDF(
   y += 3;
 
   // ── Body sections ──
-  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.content.trim());
+  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && (s.content.trim() || s.diagram || (s.diagrams && s.diagrams.length > 0)));
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
   onProgress?.(2); // Step 2: Rendering diagrams & images
-  const diagramPngs: Record<string, string | null> = {};
-  const diagramInfos: Record<string, any> = {};
+  const sectionDiagramPngs: Record<string, (string | null)[]> = {};
+  const sectionDiagramInfos: Record<string, any[]> = {};
   if (!skipDiagrams) {
     const promises = bodySections.map(async (s) => {
-      const diag = await getDiagramForSection(s);
-      if (diag) {
-        diagramInfos[s.id] = diag;
-        diagramPngs[s.id] = await ensurePng(diag);
+      const diags = s.diagrams || (s.diagram ? [s.diagram] : []);
+      if (diags.length > 0) {
+        sectionDiagramInfos[s.id] = diags;
+        const pngs = await Promise.all(diags.map(async (d) => {
+          if (d.imageData && d.imageData.startsWith("data:")) return d.imageData;
+          return ensurePng(d);
+        }));
+        sectionDiagramPngs[s.id] = pngs;
       }
     });
     await Promise.all(promises);
@@ -407,9 +411,9 @@ export async function exportToPDF(
 
   onProgress?.(3); // Step 3: Laying out pages
   if (config.columns === 2) {
-    renderTwoColumn(doc, bodySections, refSection, config, margin, pw, ph, y, diagramPngs, diagramInfos);
+    renderTwoColumn(doc, bodySections, refSection, config, margin, pw, ph, y, sectionDiagramPngs, sectionDiagramInfos);
   } else {
-    renderSingleColumn(doc, bodySections, refSection, config, margin, contentW, pw, ph, y, diagramPngs, diagramInfos);
+    renderSingleColumn(doc, bodySections, refSection, config, margin, contentW, pw, ph, y, sectionDiagramPngs, sectionDiagramInfos);
   }
 
   // ── Footer on every page ──
@@ -431,7 +435,7 @@ export async function exportToPDF(
 function renderSingleColumn(
   doc: jsPDF, bodySections: PaperSection[], refSection: PaperSection | undefined,
   config: JournalConfig, margin: number, contentW: number, pw: number, ph: number, y: number,
-  diagramPngs: Record<string, string | null>, diagramInfos: Record<string, any>
+  sectionDiagramPngs: Record<string, (string | null)[]>, sectionDiagramInfos: Record<string, any[]>
 ) {
   const lh = lineH(config.bodySize, config.lineSpacing);
   const headLhVal = lineH(config.headingSize, 1.2);
@@ -440,6 +444,7 @@ function renderSingleColumn(
   const checkSpace = (needed: number) => { if (y + needed > bottomLimit) addPage(); };
 
   let sectionNum = 0;
+  let figureNum = 0;
   for (const section of bodySections) {
     sectionNum++;
     const minKeepTogether = headLhVal + 1 + lh * 2;
@@ -470,35 +475,42 @@ function renderSingleColumn(
       y += 1.5;
     }
 
-    // Add diagram in layout flow
-    const pngData = diagramPngs[section.id];
-    const diagram = diagramInfos[section.id];
-    if (pngData && diagram) {
-      const dims = getImageDimensions(pngData);
-      const aspectRatio = dims.h / dims.w;
-      const imgW = contentW * 0.85;
-      const imgH = Math.min(imgW * aspectRatio, (ph - margin * 2) * 0.45); // cap at 45% page height
-      checkSpace(imgH + 10);
-      try {
-        doc.addImage(pngData, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
-        y += imgH + 2.5;
-        
-        doc.setFontSize(config.bodySize - 1);
-        doc.setFont("times", "italic");
-        const captionText = `Fig. ${sectionNum}. ${diagram.caption || `${section.label} diagram`}`;
-        const captionLines = doc.splitTextToSize(captionText, contentW);
-        for (const line of captionLines) {
-          checkSpace(lh);
-          doc.text(line, pw / 2, y, { align: "center" });
-          y += lh;
+    // Add diagrams in layout flow
+    const pngs = sectionDiagramPngs[section.id];
+    const diags = sectionDiagramInfos[section.id];
+    if (pngs && diags) {
+      for (let i = 0; i < pngs.length; i++) {
+        const pngData = pngs[i];
+        const diagram = diags[i];
+        if (pngData && diagram) {
+          figureNum++;
+          const dims = getImageDimensions(pngData);
+          const aspectRatio = dims.h / dims.w;
+          const widthPercent = diagram.width ? parseFloat(diagram.width) / 100 : 0.85;
+          const imgW = contentW * Math.min(widthPercent, 1.0);
+          const imgH = Math.min(imgW * aspectRatio, (ph - margin * 2) * 0.45);
+          checkSpace(imgH + 10);
+          try {
+            doc.addImage(pngData, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
+            y += imgH + 2.5;
+            
+            doc.setFontSize(config.bodySize - 1);
+            doc.setFont("times", "italic");
+            const captionText = `Fig. ${figureNum}. ${diagram.caption || `${section.label} diagram`}`;
+            const captionLines = doc.splitTextToSize(captionText, contentW);
+            for (const line of captionLines) {
+              checkSpace(lh);
+              doc.text(line, pw / 2, y, { align: "center" });
+              y += lh;
+            }
+            y += 4;
+          } catch (e) {
+            console.error("Failed to add image to PDF:", e);
+          }
         }
-        y += 2;
-      } catch (imgErr) {
-        console.error("jsPDF addImage error:", imgErr);
       }
     }
-
-    y += 2;
+    y += 2.5;
   }
 
   // References
@@ -533,7 +545,7 @@ function renderSingleColumn(
 function renderTwoColumn(
   doc: jsPDF, bodySections: PaperSection[], refSection: PaperSection | undefined,
   config: JournalConfig, margin: number, pw: number, ph: number, startY: number,
-  diagramPngs: Record<string, string | null>, diagramInfos: Record<string, any>
+  sectionDiagramPngs: Record<string, (string | null)[]>, sectionDiagramInfos: Record<string, any[]>
 ) {
   const gap = 5;
   const colW = (pw - margin * 2 - gap) / 2;
@@ -545,7 +557,7 @@ function renderTwoColumn(
     | { type: "heading"; text: string } 
     | { type: "body"; text: string } 
     | { type: "gap"; h: number }
-    | { type: "diagram"; diagram: any; sectionId: string };
+    | { type: "diagram"; diagram: any; pngData: string; sectionId: string };
 
   const items: Item[] = [];
 
@@ -564,9 +576,14 @@ function renderTwoColumn(
       items.push({ type: "body", text: p });
     }
 
-    const diagram = diagramInfos[section.id];
-    if (diagram) {
-      items.push({ type: "diagram", diagram, sectionId: section.id });
+    const pngs = sectionDiagramPngs[section.id];
+    const diags = sectionDiagramInfos[section.id];
+    if (pngs && diags) {
+      for (let i = 0; i < pngs.length; i++) {
+        if (pngs[i] && diags[i]) {
+          items.push({ type: "diagram", diagram: diags[i], pngData: pngs[i]!, sectionId: section.id });
+        }
+      }
     }
   }
 
@@ -624,16 +641,19 @@ function renderTwoColumn(
     }
 
     if (item.type === "diagram") {
-      const pngData = diagramPngs[item.sectionId];
+      const pngData = item.pngData;
       if (pngData) {
         figIndex++;
         const dims = getImageDimensions(pngData);
         const aspectRatio = dims.h / dims.w;
-        const imgW = colW;
-        const imgH = Math.min(colW * aspectRatio, (bottomLimit - margin) * 0.4); // cap at 40% column height
+        // Use the width percentage from the editor (40%, 70%, 100%) instead of full column width
+        const widthPercent = item.diagram.width ? parseFloat(item.diagram.width) / 100 : 1.0;
+        const imgW = colW * Math.min(widthPercent, 1.0);
+        const imgH = Math.min(imgW * aspectRatio, (bottomLimit - margin) * 0.4); // cap at 40% column height
+        const imgX = getX() + (colW - imgW) / 2; // center the image within the column
         checkCol(imgH + 10);
         try {
-          doc.addImage(pngData, "PNG", getX(), y, imgW, imgH);
+          doc.addImage(pngData, "PNG", imgX, y, imgW, imgH);
           y += imgH + 2;
           
           doc.setFontSize(config.bodySize - 1);
@@ -711,7 +731,7 @@ export async function exportToWord(
   const title = (sections.find((s) => s.id === "title")?.content || "Untitled").split("\n")[0];
   const abstractSec = sections.find((s) => s.id === "abstract");
   const kwSec = sections.find((s) => s.id === "keywords");
-  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && s.content.trim());
+  const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && (s.content.trim() || s.diagram || (s.diagrams && s.diagrams.length > 0)));
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
   const names = author?.authorNames?.filter(n => n.trim()) || [];
@@ -748,6 +768,7 @@ export async function exportToWord(
   }
 
   onProgress?.(3); // Step 3: Laying out pages
+  let figureNum = 0;
   const htmlContent = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><title>${title}</title>
@@ -764,6 +785,10 @@ export async function exportToWord(
   @page { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-paper-source: 0; }
   @page Section1 { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-paper-source: 0; }
   div.Section1 { page: Section1; }
+  ${config.columns === 2 ? `
+  @page Section2 { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-columns: 2 even 0.25in; mso-paper-source: 0; }
+  div.Section2 { page: Section2; }
+  ` : ''}
   body { font-family: 'Times New Roman', Times, serif; font-size: ${config.bodySize}pt; line-height: ${bodyLineHeight}; margin: 0; }
   h1 { font-size: ${config.titleSize * 0.75}pt; text-align: center; margin-bottom: 4pt; font-family: 'Times New Roman'; line-height: 1.18; }
   h2 { font-size: ${config.headingSize}pt; font-weight: bold; margin-top: 10pt; margin-bottom: 2pt; font-family: 'Times New Roman'; }
@@ -790,7 +815,8 @@ export async function exportToWord(
   ${abstractSec?.content.trim() ? `<p class="abstract-label">Abstract</p><p${config.abstractStyle === "italic" ? ' style="font-style:italic;"' : ""}>${escapeHtml(abstractSec.content)}</p>` : ""}
   ${kwSec?.content.trim() ? `<p><span class="kw-label">${journal.startsWith("ieee") || journal === "icassp" ? "Index Terms" : "Keywords"}—</span><i>${escapeHtml(kwSec.content)}</i></p>` : ""}
   <hr style="border:none;border-top:0.3px solid #ccc;"/>
-  <div class="content-body">
+  </div>
+  ${config.columns === 2 ? '<br clear="all" style="page-break-before:auto;mso-break-type:section-break" />\n<div class="Section2">' : '<div class="content-body">'}
   ${bodySections.map((s) => {
     const cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
     const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
@@ -802,16 +828,21 @@ export async function exportToWord(
     diags.forEach((diagram, dIdx) => {
       const imgData = pngs[dIdx] || diagram.imageData;
       if (imgData) {
-        let widthStyle = "85%";
-        if (diagram.width === "40%") widthStyle = "40%";
-        else if (diagram.width === "70%") widthStyle = "70%";
-        else if (diagram.width === "100%") widthStyle = "95%";
-        else if (diagram.width) widthStyle = diagram.width;
+        figureNum++;
+        let widthPercent = 0.85;
+        if (diagram.width === "40%") widthPercent = 0.40;
+        else if (diagram.width === "70%") widthPercent = 0.70;
+        else if (diagram.width === "100%") widthPercent = 0.95;
+        else if (diagram.width) widthPercent = parseFloat(diagram.width) / 100 || 0.85;
+
+        // Convert percentage to hard pixel width for Microsoft Word compatibility
+        const maxColWidthPx = config.columns === 2 ? 300 : 600; // ~3.125 inches vs ~6.5 inches at 96dpi
+        const explicitWidthPx = Math.round(maxColWidthPx * widthPercent);
 
         diagramHtml += `
           <div style="text-align: center; margin: 12pt 0; page-break-inside: avoid;">
-            <img src="${imgData}" alt="Diagram for ${escapeHtml(s.label)}" style="max-width: 95%; width: ${widthStyle}; height: auto; display: block; margin: 0 auto; border: 0.5pt solid #ddd;" />
-            <p style="text-align: center; font-style: italic; font-size: ${config.bodySize - 1}pt; margin-top: 4pt; color: #444;">Fig. ${escapeHtml(s.label)}: ${escapeHtml(diagram.caption || "Generated diagram representation.")}</p>
+            <img src="${imgData}" width="${explicitWidthPx}" alt="Diagram for ${escapeHtml(s.label)}" style="width: ${explicitWidthPx}px; max-width: 100%; height: auto; display: block; margin: 0 auto; border: 0.5pt solid #ddd;" />
+            <p style="text-align: center; font-style: italic; font-size: ${config.bodySize - 1}pt; margin-top: 4pt; color: #444;">Fig. ${figureNum}. ${escapeHtml(diagram.caption || "Generated diagram representation.")}</p>
           </div>
         `;
       }
@@ -820,7 +851,6 @@ export async function exportToWord(
     return `<h2>${escapeHtml(makeHeading(s.label))}</h2>${parasHtml}${diagramHtml}`;
   }).join("")}
   ${refSection?.content.trim() ? `<h2>${config.headingStyle === "roman" ? "REFERENCES" : "References"}</h2>${refSection.content.split("\n").filter(Boolean).map((r, i) => `<p class="ref">[${i + 1}] ${escapeHtml(r.replace(/^\[\d+\]\s*/, ""))}</p>`).join("")}` : ""}
-  </div>
   </div>
   <div style="text-align:center;font-size:6.5pt;color:#bbb;font-family:Helvetica,Arial,sans-serif;margin-top:24pt;">Manuscript — PaperForge</div>
 </body></html>`;

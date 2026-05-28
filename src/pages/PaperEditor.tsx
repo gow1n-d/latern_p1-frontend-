@@ -1090,6 +1090,31 @@ export default function PaperEditor() {
       setExportState(null);
     }
   };
+  const handleExportPDF = async () => {
+    const cleanSections = sections.map(s => ({ ...s, content: stripMarkdown(s.content) }));
+    const title = cleanSections.find((s) => s.id === "title")?.content || "paper";
+    setShowExportMenu(false);
+    setExportState({ active: true, step: 1, format: "PDF Document (.pdf)", paperTitle: title });
+    try {
+      const pdfBlob = await exportToPDF(cleanSections, selectedJournal, title, authorDetails, (step) => {
+        setExportState((prev) => prev ? { ...prev, step } : null);
+      });
+      setExportState({
+        active: true,
+        step: 5,
+        format: "PDF Document (.pdf)",
+        paperTitle: title,
+        ready: true,
+        blob: pdfBlob,
+        ext: "pdf"
+      });
+      toast.success("PDF exported successfully!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export PDF.");
+      setExportState(null);
+    }
+  };
 
 
   const copySection = () => {
@@ -1661,6 +1686,7 @@ export default function PaperEditor() {
               </Button>
               {showExportMenu && (
                 <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
+                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
                   <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
                   <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
                 </div>
@@ -2520,25 +2546,8 @@ export default function PaperEditor() {
               setSections(prevSecs => {
                 const updatedSecs = prevSecs.map(s => {
                   if (s.id === sec) {
-                    let newContent = s.content;
-                    if (finalData.type === "mermaid" && finalData.code) {
-                      // Replace existing mermaid block if there is one, otherwise append
-                      if (newContent.includes("```mermaid")) {
-                        newContent = newContent.replace(/```mermaid[\s\S]*?```/g, `\`\`\`mermaid\n${finalData.code}\n\`\`\``);
-                      } else {
-                        newContent = newContent.trim() + `\n\n\`\`\`mermaid\n${finalData.code}\n\`\`\`\n\n`;
-                      }
-                    } else if (finalData.type === "image" && finalData.imageData) {
-                      const imgMarkdown = `![${finalData.caption || "Section Diagram"}](${finalData.imageData})`;
-                      if (newContent.includes("![")) {
-                        newContent = newContent.replace(/!\[.*?\]\(.*?\)/g, imgMarkdown);
-                      } else {
-                        newContent = newContent.trim() + `\n\n${imgMarkdown}\n\n`;
-                      }
-                    }
                     return { 
                       ...s, 
-                      content: newContent, 
                       diagram: updatedList[0],
                       diagrams: updatedList 
                     };
