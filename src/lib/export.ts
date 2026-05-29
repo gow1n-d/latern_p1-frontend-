@@ -463,27 +463,20 @@ function renderSingleColumn(
     // Body paragraphs
     doc.setFontSize(config.bodySize);
     doc.setFont("times", "normal");
-    const cleanContent = section.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
-    const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
-    for (let pi = 0; pi < paras.length; pi++) {
-      const indent = pi > 0 ? 5 : 0;
-      const lines = doc.splitTextToSize(paras[pi], contentW - indent);
-      for (let li = 0; li < lines.length; li++) {
-        checkSpace(lh);
-        doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
-        y += lh;
-      }
-      y += 1.5;
-    }
+    const cleanContent = cleanSectionContent(section.content, section.label);
+    const blocks = cleanContent.split(/\n\s*\n/).filter(Boolean);
+    const pngs = sectionDiagramPngs[section.id] || [];
+    const diags = sectionDiagramInfos[section.id] || [];
 
-    // Add diagrams in layout flow
-    const pngs = sectionDiagramPngs[section.id];
-    const diags = sectionDiagramInfos[section.id];
-    if (pngs && diags) {
-      for (let i = 0; i < pngs.length; i++) {
-        const pngData = pngs[i];
-        const diagram = diags[i];
-        if (pngData && diagram) {
+    for (let bi = 0; bi < blocks.length; bi++) {
+      const block = blocks[bi];
+      const diagramMatch = block.match(/^!\[Diagram:.*?\]\((.*?)\)$/);
+      if (diagramMatch) {
+        const diagId = diagramMatch[1];
+        const diagIdx = diags.findIndex(d => d.id === diagId);
+        if (diagIdx !== -1 && pngs[diagIdx]) {
+          const pngData = pngs[diagIdx]!;
+          const diagram = diags[diagIdx];
           figureNum++;
           const dims = getImageDimensions(pngData);
           const aspectRatio = dims.h / dims.w;
@@ -508,6 +501,18 @@ function renderSingleColumn(
           } catch (e) {
             console.error("Failed to add image to PDF:", e);
           }
+        }
+      } else {
+        const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+        if (cleanP) {
+          const indent = bi > 0 ? 5 : 0;
+          const lines = doc.splitTextToSize(cleanP, contentW - indent);
+          for (let li = 0; li < lines.length; li++) {
+            checkSpace(lh);
+            doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
+            y += lh;
+          }
+          y += 1.5;
         }
       }
     }

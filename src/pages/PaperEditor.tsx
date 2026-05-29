@@ -608,8 +608,10 @@ export default function PaperEditor() {
               if (s.id === activeSection) {
                 const currentList = s.diagrams || [];
                 const updatedList = [...currentList, newDiag];
+                const newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
                 return { 
                   ...s, 
+                  content: newContent,
                   diagram: updatedList[0],
                   diagrams: updatedList
                 };
@@ -2548,8 +2550,10 @@ export default function PaperEditor() {
                 if (s.id === sec) {
                   const currentList = s.diagrams || [];
                   const updatedList = [...currentList, finalData];
+                  const newContent = s.content + `\n\n![Diagram: ${finalData.caption}](${finalData.id})\n\n`;
                   return { 
                     ...s, 
+                    content: newContent,
                     diagram: updatedList[0],
                     diagrams: updatedList 
                   };

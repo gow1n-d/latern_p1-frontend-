@@ -104,55 +104,98 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
       </div>
     );
   };
-  const paragraphs = (content: string) =>
-    stripMarkdown(content).split("\n").filter(Boolean).map((p, i) => (
-      <p key={i} style={{
-        fontFamily: "'Times New Roman', Times, serif",
-        fontSize: config.bodySize,
-        lineHeight: config.lineSpacing,
-        textAlign: "justify" as const,
-        margin: 0,
-        marginBottom: 3,
-        textIndent: i > 0 ? 14 : 0,
-      }}>{p}</p>
-    ));
+
+  const cleanSectionContent = (content: string, label: string) => {
+    let clean = content.trim();
+    const lines = clean.split('\n');
+    if (lines.length > 0) {
+      const firstLine = lines[0].trim();
+      const strippedFirst = firstLine.replace(/[*#]/g, '').trim();
+      const labelClean = label.replace(/[*#]/g, '').trim();
+      const normalize = (str: string) => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (normalize(strippedFirst).includes(normalize(labelClean))) {
+        if (strippedFirst.split(' ').length < labelClean.split(' ').length + 6) {
+          lines.shift();
+          clean = lines.join('\n').trim();
+        }
+      }
+    }
+    return clean;
+  };
 
   let figureNum = 0;
-  const renderDiagram = (s: PaperSection) => {
-    const diags = s.diagrams || (s.diagram ? [s.diagram] : []);
-    if (diags.length === 0) return null;
-    return diags.map((d, index) => {
-      figureNum++;
-      const widthStyle = d.width || "100%";
-      return (
-        <figure key={d.id || index} style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
-          {d.type === "mermaid" && d.svg ? (
-            <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: widthStyle, margin: "0 auto", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
-          ) : d.imageData ? (
-            <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: widthStyle, height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
-          ) : null}
-          <figcaption style={{
-            fontFamily: "'Times New Roman', Times, serif",
-            fontSize: config.bodySize - 0.5,
-            fontStyle: "italic" as const,
-            marginTop: 4,
-            textAlign: "center" as const,
-          }}>
-            Fig. {figureNum}. {d.caption}
-          </figcaption>
-        </figure>
-      );
+  const renderSingleDiagram = (d: any) => {
+    if (!d) return null;
+    figureNum++;
+    const widthStyle = d.width || "100%";
+    return (
+      <figure key={d.id} style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
+        {d.type === "mermaid" && d.svg ? (
+          <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: widthStyle, margin: "0 auto", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
+        ) : d.imageData ? (
+          <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: widthStyle, height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
+        ) : null}
+        <figcaption style={{
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: config.bodySize - 0.5,
+          fontStyle: "italic" as const,
+          marginTop: 4,
+          textAlign: "center" as const,
+        }}>
+          Fig. {figureNum}. {d.caption}
+        </figcaption>
+      </figure>
+    );
+  };
+
+  const paragraphs = (content: string, label: string, sectionDiagrams: any[]) => {
+    let text = content;
+    if (label) text = cleanSectionContent(text, label);
+    
+    // Split by paragraphs
+    const blocks = text.split(/\n\s*\n/).filter(Boolean);
+    const elements: React.ReactNode[] = [];
+
+    blocks.forEach((block, i) => {
+      // Check if this paragraph is exactly a diagram tag
+      const diagramMatch = block.match(/^!\[Diagram:.*?\]\((.*?)\)$/);
+      if (diagramMatch) {
+        const diagId = diagramMatch[1];
+        const diag = sectionDiagrams.find(d => d.id === diagId);
+        if (diag) {
+          elements.push(renderSingleDiagram(diag));
+        }
+      } else {
+        // Strip other markdown but preserve the text
+        const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+        if (cleanP) {
+          elements.push(
+            <p key={`p-${i}`} style={{
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: config.bodySize,
+              lineHeight: config.lineSpacing,
+              textAlign: "justify" as const,
+              margin: 0,
+              marginBottom: 3,
+              textIndent: i > 0 ? 14 : 0,
+            }}>{cleanP}</p>
+          );
+        }
+      }
     });
+    return elements;
   };
 
   // Build body + references
-  const bodyElements = bodySections.map((s) => (
-    <div key={s.id} style={{ breakInside: "avoid-column" as const }}>
-      {makeHeading(s.label)}
-      {paragraphs(s.content)}
-      {renderDiagram(s)}
-    </div>
-  ));
+  const bodyElements = bodySections.map((s) => {
+    const diags = s.diagrams || (s.diagram ? [s.diagram] : []);
+    return (
+      <div key={s.id} style={{ breakInside: "avoid-column" as const }}>
+        {makeHeading(s.label)}
+        {paragraphs(s.content, s.label, diags)}
+      </div>
+    );
+  });
 
   if (refSection?.content.trim()) {
     const refLines = refSection.content.split("\n").filter(Boolean);
@@ -283,8 +326,8 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
           </p>
         )}
 
-        {/* Thin rule */}
-        <hr style={{ border: "none", borderTop: "0.4px solid #666", margin: "0 0 8px 0" }} />
+        {/* Thin rule before columns start */}
+        <hr style={{ border: "none", borderTop: "0.3px solid #ccc", margin: "6px 0 12px 0" }} />
 
         {/* Abstract — always full-width even in two-column papers */}
         {abstractSection?.content && (
@@ -307,7 +350,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
               margin: 0,
               fontStyle: config.abstractStyle === "italic" ? "italic" as const : "normal" as const,
             }}>
-              {stripMarkdown(abstractSection.content)}
+              {stripMarkdown(cleanSectionContent(abstractSection.content, "Abstract"))}
             </p>
           </div>
         )}
@@ -324,7 +367,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
               <span style={{ fontWeight: 700, fontStyle: "italic" as const }}>
                 {journal.startsWith("ieee") || journal === "icassp" ? "Index Terms" : "Keywords"}—
               </span>
-              <span style={{ fontStyle: "italic" as const }}>{stripMarkdown(keywordsSection.content)}</span>
+              <span style={{ fontStyle: "italic" as const }}>{stripMarkdown(cleanSectionContent(keywordsSection.content, "Keywords"))}</span>
             </p>
           </div>
         )}
