@@ -1069,7 +1069,7 @@ export default function PaperEditor() {
     const cleanSections = sections.map(s => ({ ...s, content: stripMarkdown(s.content) }));
     const title = cleanSections.find((s) => s.id === "title")?.content || "paper";
     setShowExportMenu(false);
-    setExportState({ active: true, step: 1, format: "Word (.doc)", paperTitle: title });
+    setExportState({ active: true, step: 1, format: "Word (.docx)", paperTitle: title });
     try {
       const wordBlob = await exportToWord(cleanSections, selectedJournal, title, authorDetails, (step) => {
         setExportState((prev) => prev ? { ...prev, step } : null);
@@ -1077,11 +1077,11 @@ export default function PaperEditor() {
       setExportState({
         active: true,
         step: 5,
-        format: "Word (.doc)",
+        format: "Word (.docx)",
         paperTitle: title,
         ready: true,
         blob: wordBlob,
-        ext: "doc"
+        ext: "docx"
       });
       toast.success("Word document compilation complete!");
     } catch (err) {
@@ -1686,7 +1686,6 @@ export default function PaperEditor() {
               </Button>
               {showExportMenu && (
                 <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-border bg-card shadow-lg z-50 py-1">
-                  <button onClick={handleExportPDF} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📄 Export as PDF</button>
                   <button onClick={handleExportWord} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as Word</button>
                   <button onClick={handleExportLaTeX} className="w-full text-left px-4 py-2.5 text-sm text-card-foreground hover:bg-muted transition-colors">📝 Export as LaTeX</button>
                 </div>
@@ -2107,37 +2106,6 @@ export default function PaperEditor() {
                 <span className="text-[10px] font-medium">Diagram</span>
               </button>
             )}
-            <div className="w-px h-6 bg-border shrink-0 mx-0.5" />
-            <button
-              onClick={handleValidateFormat}
-              disabled={isValidating}
-              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
-            >
-              {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-              <span className="text-[10px] font-medium">Validate</span>
-            </button>
-            <button
-              onClick={handleCheckPlagiarism}
-              disabled={isCheckingPlagiarism}
-              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
-            >
-              {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
-              <span className="text-[10px] font-medium">Plagiarism</span>
-            </button>
-            <button
-              onClick={() => setShowScholar(true)}
-              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors shrink-0"
-            >
-              <GraduationCap className="h-4 w-4" />
-              <span className="text-[10px] font-medium">Scholar</span>
-            </button>
-            <button
-              onClick={() => setShowAuthorModal(true)}
-              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors shrink-0"
-            >
-              <User className="h-4 w-4" />
-              <span className="text-[10px] font-medium">Authors</span>
-            </button>
           </div>
         </div>
       </main>
@@ -2198,9 +2166,27 @@ export default function PaperEditor() {
               </nav>
 
               <div className="border-t border-border p-3 space-y-2">
-                <button onClick={() => { setShowMobileSections(false); navigate("/dashboard"); }} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
-                  <ChevronLeft className="h-4 w-4" /> Dashboard
-                </button>
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); handleValidateFormat(); }} disabled={isValidating}>
+                  {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />} Validate Format
+                </Button>
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); handleCheckPlagiarism(); }} disabled={isCheckingPlagiarism}>
+                  {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Check Plagiarism
+                </Button>
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); setShowScholar(true); }}>
+                  <GraduationCap className="h-4 w-4" /> Google Scholar
+                </Button>
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); setShowAuthorModal(true); }}>
+                  <User className="h-4 w-4" /> Author Details
+                </Button>
+                <div className="flex items-center justify-between pt-1 pb-1">
+                  <span className="text-xs text-muted-foreground">Theme</span>
+                  <ThemeToggle />
+                </div>
+                <div className="border-t border-border pt-2 mt-2">
+                  <button onClick={() => { setShowMobileSections(false); navigate("/dashboard"); }} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <ChevronLeft className="h-4 w-4" /> Dashboard
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

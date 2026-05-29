@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, ImageRun, convertInchesToTwip } from "docx";
 import type { PaperSection } from "@/hooks/usePapers";
 import mermaid from "mermaid";
 
@@ -718,6 +719,16 @@ export function exportToText(sections: PaperSection[], paperTitle: string) {
 }
 
 // ── Word export ──
+function base64ToUint8Array(base64: string) {
+  const binaryString = window.atob(base64.split(',')[1]);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export async function exportToWord(
   sections: PaperSection[],
   journal: string,
@@ -726,7 +737,7 @@ export async function exportToWord(
   onProgress?: (step: number) => void,
   skipDiagrams?: boolean
 ): Promise<Blob> {
-  onProgress?.(1); // Step 1: Analyzing document structure
+  onProgress?.(1);
   const config = getConfig(journal);
   const title = (sections.find((s) => s.id === "title")?.content || "Untitled").split("\n")[0];
   const abstractSec = sections.find((s) => s.id === "abstract");
@@ -737,8 +748,23 @@ export async function exportToWord(
   const names = author?.authorNames?.filter(n => n.trim()) || [];
   const affiliation = [author?.department, author?.institution, author?.city].filter(Boolean).join(", ");
 
-  const columnStyle = config.columns === 2 ? `mso-columns: 2; column-count: 2; column-gap: 0.2in;` : "";
-  const bodyLineHeight = config.lineSpacing;
+  const cleanSectionContent = (content: string, label: string) => {
+    let clean = content.trim();
+    const lines = clean.split('\n');
+    if (lines.length > 0) {
+      const firstLine = lines[0].trim();
+      const strippedFirst = firstLine.replace(/[*#]/g, '').trim();
+      const labelClean = label.replace(/[*#]/g, '').trim();
+      const normalize = (str: string) => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (normalize(strippedFirst).includes(normalize(labelClean))) {
+        if (strippedFirst.split(' ').length < labelClean.split(' ').length + 6) {
+          lines.shift();
+          clean = lines.join('\n').trim();
+        }
+      }
+    }
+    return clean;
+  };
 
   let sectionNum = 0;
   const makeHeading = (label: string) => {
@@ -749,7 +775,7 @@ export async function exportToWord(
     return `${prefix}${text}`;
   };
 
-  onProgress?.(2); // Step 2: Rendering diagrams & images
+  onProgress?.(2);
   const sectionDiagramPngs: Record<string, (string | null)[]> = {};
   const sectionDiagramInfos: Record<string, any[]> = {};
   if (!skipDiagrams) {
@@ -767,62 +793,86 @@ export async function exportToWord(
     await Promise.all(promises);
   }
 
-  onProgress?.(3); // Step 3: Laying out pages
+  onProgress?.(3);
   let figureNum = 0;
-  const htmlContent = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>${title}</title>
-<!--[if gte mso 9]>
-<xml>
-  <w:WordDocument>
-    <w:View>Print</w:View>
-    <w:Zoom>100</w:Zoom>
-    <w:DoNotOptimizeForBrowser/>
-  </w:WordDocument>
-</xml>
-<![endif]-->
-<style>
-  @page { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-paper-source: 0; }
-  @page Section1 { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-paper-source: 0; }
-  div.Section1 { page: Section1; }
-  ${config.columns === 2 ? `
-  @page Section2 { size: 8.5in 11in; margin: 1.0in 1.0in 1.0in 1.0in; mso-header-margin: 0.5in; mso-footer-margin: 0.5in; mso-columns: 2 even 0.25in; mso-paper-source: 0; }
-  div.Section2 { page: Section2; }
-  ` : ''}
-  body { font-family: 'Times New Roman', Times, serif; font-size: ${config.bodySize}pt; line-height: ${bodyLineHeight}; margin: 0; }
-  h1 { font-size: ${config.titleSize * 0.75}pt; text-align: center; margin-bottom: 4pt; font-family: 'Times New Roman'; line-height: 1.18; }
-  h2 { font-size: ${config.headingSize}pt; font-weight: bold; margin-top: 10pt; margin-bottom: 2pt; font-family: 'Times New Roman'; }
-  p { text-align: justify; margin-bottom: 2.5pt; margin-top: 0; }
-  .author { text-align: center; font-style: italic; font-size: 10pt; margin-bottom: 2pt; }
-  .affil { text-align: center; font-style: italic; font-size: 8.5pt; color: #333; margin-bottom: 2pt; }
-  .email { text-align: center; font-family: 'Courier New'; font-size: 8pt; color: #444; margin-bottom: 8pt; }
-  .journal-header { text-align: center; font-size: 7pt; letter-spacing: 2.5px; color: #888; text-transform: uppercase; font-family: Helvetica, Arial, sans-serif; }
-  .abstract-label { font-weight: bold; font-size: ${config.headingSize}pt; margin-bottom: 2pt; }
-  .kw-label { font-weight: bold; font-style: italic; }
-  .ref { font-size: ${Math.max(config.bodySize - 1, 8.5)}pt; padding-left: 14pt; text-indent: -14pt; line-height: 1.25; margin-bottom: 1pt; }
-  .content-body { ${columnStyle} }
-  .body-para { text-indent: 0.25in; }
-  .body-para-first { text-indent: 0; }
-</style></head>
-<body>
-  <div class="Section1">
-  ${config.journalHeader ? `<p class="journal-header">${config.journalHeader}</p><hr style="border:none;border-top:0.4px solid #ccc;"/>` : ""}
-  <h1>${escapeHtml(title)}</h1>
-  ${names.length > 0 ? `<p class="author">${escapeHtml(names.join(", "))}</p>` : ""}
-  ${affiliation ? `<p class="affil">${escapeHtml(affiliation)}</p>` : ""}
-  ${author?.email ? `<p class="email">${escapeHtml(author.email)}</p>` : ""}
-  <hr style="border:none;border-top:0.4px solid #666;"/>
-  ${abstractSec?.content.trim() ? `<p class="abstract-label">Abstract</p><p${config.abstractStyle === "italic" ? ' style="font-style:italic;"' : ""}>${escapeHtml(abstractSec.content)}</p>` : ""}
-  ${kwSec?.content.trim() ? `<p><span class="kw-label">${journal.startsWith("ieee") || journal === "icassp" ? "Index Terms" : "Keywords"}—</span><i>${escapeHtml(kwSec.content)}</i></p>` : ""}
-  <hr style="border:none;border-top:0.3px solid #ccc;"/>
-  </div>
-  ${config.columns === 2 ? '<br clear="all" style="page-break-before:auto;mso-break-type:section-break" />\n<div class="Section2">' : '<div class="content-body">'}
-  ${bodySections.map((s) => {
-    const cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+
+  const titleChildren: any[] = [];
+  if (config.journalHeader) {
+    titleChildren.push(new Paragraph({
+      children: [new TextRun({ text: config.journalHeader, color: "888888", size: 14, font: "Helvetica" })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    }));
+  }
+  titleChildren.push(new Paragraph({
+    children: [new TextRun({ text: title, size: config.titleSize * 2, font: "Times New Roman" })],
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 200 }
+  }));
+  if (names.length > 0) {
+    titleChildren.push(new Paragraph({
+      children: [new TextRun({ text: names.join(", "), italics: true, size: 20, font: "Times New Roman" })],
+      alignment: AlignmentType.CENTER,
+    }));
+  }
+  if (affiliation) {
+    titleChildren.push(new Paragraph({
+      children: [new TextRun({ text: affiliation, italics: true, size: 17, color: "333333", font: "Times New Roman" })],
+      alignment: AlignmentType.CENTER,
+    }));
+  }
+  if (author?.email) {
+    titleChildren.push(new Paragraph({
+      children: [new TextRun({ text: author.email, font: "Courier New", size: 16, color: "444444" })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    }));
+  }
+
+  if (abstractSec?.content.trim()) {
+    titleChildren.push(new Paragraph({
+      children: [
+        new TextRun({ text: "Abstract", bold: true, size: config.headingSize * 2, font: "Times New Roman" }),
+      ],
+      spacing: { before: 200, after: 100 }
+    }));
+    titleChildren.push(new Paragraph({
+      children: [new TextRun({ text: cleanSectionContent(abstractSec.content, "Abstract"), italics: config.abstractStyle === "italic", size: config.bodySize * 2, font: "Times New Roman" })],
+      alignment: AlignmentType.JUSTIFIED,
+      spacing: { after: 200 }
+    }));
+  }
+
+  if (kwSec?.content.trim()) {
+    titleChildren.push(new Paragraph({
+      children: [
+        new TextRun({ text: (journal.startsWith("ieee") || journal === "icassp" ? "Index Terms" : "Keywords") + "—", bold: true, italics: true, size: config.bodySize * 2, font: "Times New Roman" }),
+        new TextRun({ text: cleanSectionContent(kwSec.content, "Keywords"), italics: true, size: config.bodySize * 2, font: "Times New Roman" })
+      ],
+      spacing: { after: 200 }
+    }));
+  }
+
+  const bodyChildren: any[] = [];
+  bodySections.forEach((s) => {
+    let cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+    cleanContent = cleanSectionContent(cleanContent, s.label);
     const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
-    const parasHtml = paras.map((p, i) => `<p class="${i === 0 ? 'body-para-first' : 'body-para'}">${escapeHtml(p)}</p>`).join("");
     
-    let diagramHtml = "";
+    bodyChildren.push(new Paragraph({
+      children: [new TextRun({ text: makeHeading(s.label), bold: true, size: config.headingSize * 2, font: "Times New Roman" })],
+      spacing: { before: 200, after: 100 }
+    }));
+
+    paras.forEach((p, i) => {
+      bodyChildren.push(new Paragraph({
+        children: [new TextRun({ text: p, size: config.bodySize * 2, font: "Times New Roman" })],
+        alignment: AlignmentType.JUSTIFIED,
+        indent: { firstLine: i === 0 ? 0 : convertInchesToTwip(0.25) },
+        spacing: { line: config.lineSpacing * 240 }
+      }));
+    });
+
     const diags = sectionDiagramInfos[s.id] || [];
     const pngs = sectionDiagramPngs[s.id] || [];
     diags.forEach((diagram, dIdx) => {
@@ -835,28 +885,80 @@ export async function exportToWord(
         else if (diagram.width === "100%") widthPercent = 0.95;
         else if (diagram.width) widthPercent = parseFloat(diagram.width) / 100 || 0.85;
 
-        // Convert percentage to hard pixel width for Microsoft Word compatibility
-        const maxColWidthPx = config.columns === 2 ? 300 : 600; // ~3.125 inches vs ~6.5 inches at 96dpi
-        const explicitWidthPx = Math.round(maxColWidthPx * widthPercent);
+        try {
+          let dims = { w: 400, h: 300 }; // Fallback dimensions
+          try {
+            dims = getImageDimensions(imgData);
+          } catch (e) {
+            console.warn("Failed to get image dimensions, using fallback");
+          }
+          
+          const maxColWidthPx = config.columns === 2 ? 300 : 600;
+          const explicitWidthPx = Math.round(maxColWidthPx * widthPercent);
+          const h = Math.round(explicitWidthPx * (dims.h / dims.w));
 
-        diagramHtml += `
-          <div style="text-align: center; margin: 12pt 0; page-break-inside: avoid;">
-            <img src="${imgData}" width="${explicitWidthPx}" alt="Diagram for ${escapeHtml(s.label)}" style="width: ${explicitWidthPx}px; max-width: 100%; height: auto; display: block; margin: 0 auto; border: 0.5pt solid #ddd;" />
-            <p style="text-align: center; font-style: italic; font-size: ${config.bodySize - 1}pt; margin-top: 4pt; color: #444;">Fig. ${figureNum}. ${escapeHtml(diagram.caption || "Generated diagram representation.")}</p>
-          </div>
-        `;
+          bodyChildren.push(new Paragraph({
+            children: [
+              new ImageRun({
+                data: base64ToUint8Array(imgData),
+                transformation: {
+                  width: explicitWidthPx,
+                  height: h
+                },
+                type: "png"
+              })
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 200, after: 100 }
+          }));
+
+          bodyChildren.push(new Paragraph({
+            children: [new TextRun({ text: `Fig. ${figureNum}. ${diagram.caption || "Generated diagram representation."}`, italics: true, size: Math.max((config.bodySize - 1) * 2, 16), color: "444444", font: "Times New Roman" })],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 }
+          }));
+        } catch (e) {
+          console.error("Failed to add image to word document:", e);
+        }
       }
     });
+  });
 
-    return `<h2>${escapeHtml(makeHeading(s.label))}</h2>${parasHtml}${diagramHtml}`;
-  }).join("")}
-  ${refSection?.content.trim() ? `<h2>${config.headingStyle === "roman" ? "REFERENCES" : "References"}</h2>${refSection.content.split("\n").filter(Boolean).map((r, i) => `<p class="ref">[${i + 1}] ${escapeHtml(r.replace(/^\[\d+\]\s*/, ""))}</p>`).join("")}` : ""}
-  </div>
-  <div style="text-align:center;font-size:6.5pt;color:#bbb;font-family:Helvetica,Arial,sans-serif;margin-top:24pt;">Manuscript — PaperForge</div>
-</body></html>`;
+  if (refSection?.content.trim()) {
+    bodyChildren.push(new Paragraph({
+      children: [new TextRun({ text: config.headingStyle === "roman" ? "REFERENCES" : "References", bold: true, size: config.headingSize * 2, font: "Times New Roman" })],
+      spacing: { before: 200, after: 100 }
+    }));
 
-  onProgress?.(4); // Step 4: Generating & saving file
-  const wordBlob = new Blob(["\ufeff" + htmlContent], { type: "application/msword" });
+    refSection.content.split("\n").filter(Boolean).forEach((r, i) => {
+      bodyChildren.push(new Paragraph({
+        children: [new TextRun({ text: `[${i + 1}] ${r.replace(/^\[\d+\]\s*/, "")}`, size: Math.max(config.bodySize - 1, 8.5) * 2, font: "Times New Roman" })],
+        indent: { left: convertInchesToTwip(0.2), hanging: convertInchesToTwip(0.2) },
+        spacing: { after: 60 }
+      }));
+    });
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          type: SectionType.CONTINUOUS,
+          column: { space: convertInchesToTwip(0.25), count: 1, equalWidth: true }
+        },
+        children: titleChildren
+      },
+      {
+        properties: {
+          column: config.columns === 2 ? { space: convertInchesToTwip(0.25), count: 2, equalWidth: true } : undefined
+        },
+        children: bodyChildren
+      }
+    ]
+  });
+
+  onProgress?.(4);
+  const wordBlob = await Packer.toBlob(doc);
   return wordBlob;
 }
 
