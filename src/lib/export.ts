@@ -920,6 +920,13 @@ export async function exportToWord(
         } catch (e) {
           console.error("Failed to add image to word document:", e);
         }
+      } else {
+        figureNum++;
+        bodyChildren.push(new Paragraph({
+          children: [new TextRun({ text: `[Diagram rendering failed: Fig. ${figureNum}. ${diagram.caption}]`, italics: true, size: Math.max((config.bodySize - 1) * 2, 16), color: "FF0000", font: "Times New Roman" })],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 200, after: 200 }
+        }));
       }
     });
   });
