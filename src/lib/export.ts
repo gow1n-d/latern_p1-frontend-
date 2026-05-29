@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, ImageRun, convertInchesToTwip } from "docx";
 import type { PaperSection } from "@/hooks/usePapers";
 import mermaid from "mermaid";
+import { stripMarkdown } from "@/lib/utils";
 
 type AuthorInfo = {
   authorNames?: string[];
@@ -101,6 +102,24 @@ function toRoman(n: number): string {
 }
 
 const NON_BODY = ["title", "abstract", "keywords", "references", "works-cited", "bibliography", "reference-list", "ccs-concepts", "highlights"];
+
+export const cleanSectionContent = (content: string, label: string) => {
+  let clean = content.trim();
+  const lines = clean.split('\n');
+  if (lines.length > 0) {
+    const firstLine = lines[0].trim();
+    const strippedFirst = firstLine.replace(/[*#]/g, '').trim();
+    const labelClean = label.replace(/[*#]/g, '').trim();
+    const normalize = (str: string) => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (normalize(strippedFirst).includes(normalize(labelClean))) {
+      if (strippedFirst.split(' ').length < labelClean.split(' ').length + 6) {
+        lines.shift();
+        clean = lines.join('\n').trim();
+      }
+    }
+  }
+  return clean;
+};
 
 // Global image/diagram PNG cache — shared across exports
 const pngCache = new Map<string, string>();
@@ -752,24 +771,6 @@ export async function exportToWord(
 
   const names = author?.authorNames?.filter(n => n.trim()) || [];
   const affiliation = [author?.department, author?.institution, author?.city].filter(Boolean).join(", ");
-
-  const cleanSectionContent = (content: string, label: string) => {
-    let clean = content.trim();
-    const lines = clean.split('\n');
-    if (lines.length > 0) {
-      const firstLine = lines[0].trim();
-      const strippedFirst = firstLine.replace(/[*#]/g, '').trim();
-      const labelClean = label.replace(/[*#]/g, '').trim();
-      const normalize = (str: string) => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (normalize(strippedFirst).includes(normalize(labelClean))) {
-        if (strippedFirst.split(' ').length < labelClean.split(' ').length + 6) {
-          lines.shift();
-          clean = lines.join('\n').trim();
-        }
-      }
-    }
-    return clean;
-  };
 
   let sectionNum = 0;
   const makeHeading = (label: string) => {
