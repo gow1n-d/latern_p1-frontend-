@@ -600,22 +600,24 @@ export default function PaperEditor() {
           setSectionDiagrams(prev => {
             const currentList = prev[activeSection] || [];
             const updatedList = [...currentList, newDiag];
-
-            setSections(prevSecs => {
-              const updatedSecs = prevSecs.map(s =>
-                s.id === activeSection
-                  ? { 
-                      ...s, 
-                      diagram: updatedList[0],
-                      diagrams: updatedList
-                    }
-                  : s
-              );
-              autoSave(updatedSecs);
-              return updatedSecs;
-            });
-
             return { ...prev, [activeSection]: updatedList };
+          });
+
+          setSections(prevSecs => {
+            const updatedSecs = prevSecs.map(s => {
+              if (s.id === activeSection) {
+                const currentList = s.diagrams || [];
+                const updatedList = [...currentList, newDiag];
+                return { 
+                  ...s, 
+                  diagram: updatedList[0],
+                  diagrams: updatedList
+                };
+              }
+              return s;
+            });
+            autoSave(updatedSecs);
+            return updatedSecs;
           });
 
           toast.success(`Image "${file.name}" optimized and added to ${currentSection?.label}!`);
@@ -681,19 +683,22 @@ export default function PaperEditor() {
     setSectionDiagrams(prev => {
       const currentList = prev[sectionId] || [];
       const updatedList = currentList.map(d => d.id === diagId ? { ...d, width } : d);
-
-      setSections(prevSecs => {
-        const updatedSecs = prevSecs.map(s =>
-          s.id === sectionId
-            ? { ...s, diagram: updatedList[0], diagrams: updatedList }
-            : s
-        );
-        autoSave(updatedSecs);
-        return updatedSecs;
-      });
-
       return { ...prev, [sectionId]: updatedList };
     });
+
+    setSections(prevSecs => {
+      const updatedSecs = prevSecs.map(s => {
+        if (s.id === sectionId) {
+          const currentList = s.diagrams || [];
+          const updatedList = currentList.map(d => d.id === diagId ? { ...d, width } : d);
+          return { ...s, diagram: updatedList[0], diagrams: updatedList };
+        }
+        return s;
+      });
+      autoSave(updatedSecs);
+      return updatedSecs;
+    });
+
     toast.success("Image size updated!");
   }, [autoSave]);
 
@@ -702,19 +707,20 @@ export default function PaperEditor() {
     setSectionDiagrams(prev => {
       const currentList = prev[sectionId] || [];
       const updatedList = currentList.map(d => d.id === diagId ? { ...d, caption } : d);
-
-      setSections(prevSecs => {
-        const updatedSecs = prevSecs.map(s =>
-          s.id === sectionId
-            ? { ...s, diagram: updatedList[0], diagrams: updatedList }
-            : s
-        );
-        autoSave(updatedSecs);
-        return updatedSecs;
-      });
-
       return { ...prev, [sectionId]: updatedList };
     });
+
+    setSections(prevSecs => {
+      const updatedSecs = prevSecs.map(s =>
+        s.id === sectionId
+          ? { ...s, diagram: (s.diagrams?.map(d => d.id === diagId ? { ...d, caption } : d) || [])[0], diagrams: s.diagrams?.map(d => d.id === diagId ? { ...d, caption } : d) }
+          : s
+      );
+      autoSave(updatedSecs);
+      return updatedSecs;
+    });
+
+    toast.success("Caption updated!");
   }, [autoSave]);
 
   // Diagram cancellation handler
@@ -722,23 +728,26 @@ export default function PaperEditor() {
     setSectionDiagrams(prev => {
       const currentList = prev[sectionId] || [];
       const updatedList = currentList.filter(d => d.id !== diagId);
-
-      setSections(prevSecs => {
-        const updatedSecs = prevSecs.map(s =>
-          s.id === sectionId
-            ? { 
-                ...s, 
-                diagram: updatedList.length > 0 ? updatedList[0] : undefined, 
-                diagrams: updatedList 
-              }
-            : s
-        );
-        autoSave(updatedSecs);
-        return updatedSecs;
-      });
-
       return { ...prev, [sectionId]: updatedList };
     });
+
+    setSections(prevSecs => {
+      const updatedSecs = prevSecs.map(s => {
+        if (s.id === sectionId) {
+          const currentList = s.diagrams || [];
+          const updatedList = currentList.filter(d => d.id !== diagId);
+          return { 
+            ...s, 
+            diagram: updatedList.length > 0 ? updatedList[0] : undefined, 
+            diagrams: updatedList 
+          };
+        }
+        return s;
+      });
+      autoSave(updatedSecs);
+      return updatedSecs;
+    });
+
     toast.success("Diagram/image removed!");
   }, [autoSave]);
 
@@ -762,19 +771,22 @@ export default function PaperEditor() {
       setSectionDiagrams(prev => {
         const currentList = prev[sectionId] || [];
         const updatedList = currentList.map(d => d.id === diagId ? { ...d, imageData: optimizedDataUrl, width: "70%" } : d);
-
-        setSections(prevSecs => {
-          const updatedSecs = prevSecs.map(s =>
-            s.id === sectionId
-              ? { ...s, diagram: updatedList[0], diagrams: updatedList }
-              : s
-          );
-          autoSave(updatedSecs);
-          return updatedSecs;
-        });
-
         return { ...prev, [sectionId]: updatedList };
       });
+
+      setSections(prevSecs => {
+        const updatedSecs = prevSecs.map(s => {
+          if (s.id === sectionId) {
+            const currentList = s.diagrams || [];
+            const updatedList = currentList.map(d => d.id === diagId ? { ...d, imageData: optimizedDataUrl, width: "70%" } : d);
+            return { ...s, diagram: updatedList[0], diagrams: updatedList };
+          }
+          return s;
+        });
+        autoSave(updatedSecs);
+        return updatedSecs;
+      });
+
       toast.success("Image optimized and compressed!");
     } catch (err) {
       toast.error("Failed to optimize image");
@@ -2528,23 +2540,24 @@ export default function PaperEditor() {
             setSectionDiagrams(prev => {
               const currentList = prev[sec] || [];
               const updatedList = [...currentList, finalData];
-              
-              setSections(prevSecs => {
-                const updatedSecs = prevSecs.map(s => {
-                  if (s.id === sec) {
-                    return { 
-                      ...s, 
-                      diagram: updatedList[0],
-                      diagrams: updatedList 
-                    };
-                  }
-                  return s;
-                });
-                autoSave(updatedSecs);
-                return updatedSecs;
-              });
-
               return { ...prev, [sec]: updatedList };
+            });
+
+            setSections(prevSecs => {
+              const updatedSecs = prevSecs.map(s => {
+                if (s.id === sec) {
+                  const currentList = s.diagrams || [];
+                  const updatedList = [...currentList, finalData];
+                  return { 
+                    ...s, 
+                    diagram: updatedList[0],
+                    diagrams: updatedList 
+                  };
+                }
+                return s;
+              });
+              autoSave(updatedSecs);
+              return updatedSecs;
             });
 
             toast.success("AI Diagram generated and pre-cached successfully!");
