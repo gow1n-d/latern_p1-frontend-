@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, ImageRun, convertInchesToTwip } from "docx";
 import type { PaperSection } from "@/hooks/usePapers";
 import mermaid from "mermaid";
-import { stripMarkdown } from "@/lib/utils";
+import { stripMarkdown } from "@/lib/ai";
 
 type AuthorInfo = {
   authorNames?: string[];
