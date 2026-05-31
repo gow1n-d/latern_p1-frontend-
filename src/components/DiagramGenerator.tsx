@@ -11,6 +11,8 @@ mermaid.initialize({
   theme: "default",
   securityLevel: "loose",
   fontFamily: "inherit",
+  flowchart: { htmlLabels: false },
+  sequence: { showSequenceNumbers: false },
 });
 
 type DiagramGeneratorProps = {

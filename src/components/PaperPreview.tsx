@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import React, { useRef } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
 import { stripMarkdown } from "@/lib/ai";
 
@@ -123,7 +123,88 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
     return clean;
   };
 
+
   let figureNum = 0;
+  let tableNum = 0;
+
+  /** Detect if a text block is a pipe-delimited markdown table.
+   *  Returns parsed rows (header + data) or null if not a table. */
+  const parseMarkdownTable = (block: string): { headers: string[]; rows: string[][]; caption?: string } | null => {
+    const lines = block.trim().split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return null;
+
+    // Check for pipe-delimited table: all lines must start/end with | or contain at least 2 |
+    const isPipeTable = lines.every(l => (l.match(/\|/g) || []).length >= 2);
+    if (!isPipeTable) return null;
+
+    // Find header and separator
+    const parsePipeRow = (line: string): string[] =>
+      line.split("|").map(c => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length); // trim empty first/last from leading/trailing |
+
+    // Check for separator line (|---|---|)
+    let headerIdx = 0;
+    let sepIdx = -1;
+    for (let i = 0; i < Math.min(lines.length, 3); i++) {
+      if (/^\|[\s\-:|\+]+\|$/.test(lines[i]) || /^[\s\-:|\+]+$/.test(lines[i])) {
+        sepIdx = i;
+        headerIdx = Math.max(0, i - 1);
+        break;
+      }
+    }
+
+    if (sepIdx === -1) {
+      // No separator — treat first row as header, rest as data (if consistent column count)
+      const firstCols = parsePipeRow(lines[0]);
+      if (firstCols.length < 2) return null;
+      const dataRows = lines.slice(1).map(l => parsePipeRow(l));
+      if (dataRows.length === 0) return null;
+      // Verify consistent column count (allow ±1)
+      const consistent = dataRows.every(r => Math.abs(r.length - firstCols.length) <= 1);
+      if (!consistent) return null;
+      // Pad rows to match header length
+      const padded = dataRows.map(r => {
+        while (r.length < firstCols.length) r.push("");
+        return r.slice(0, firstCols.length);
+      });
+      return { headers: firstCols, rows: padded };
+    }
+
+    // Standard markdown table with separator
+    const headers = parsePipeRow(lines[headerIdx]);
+    if (headers.length < 2) return null;
+    const dataLines = lines.slice(sepIdx + 1);
+    const dataRows = dataLines.map(l => {
+      const cells = parsePipeRow(l);
+      while (cells.length < headers.length) cells.push("");
+      return cells.slice(0, headers.length);
+    }).filter(r => r.some(c => c.length > 0));
+
+    if (dataRows.length === 0) return null;
+    return { headers, rows: dataRows };
+  };
+
+  /** Detect tab-separated or consistent comma-separated data blocks */
+  const parseDelimitedTable = (block: string): { headers: string[]; rows: string[][] } | null => {
+    const lines = block.trim().split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return null;
+
+    // Check for tab-separated data
+    const tabCounts = lines.map(l => (l.match(/\t/g) || []).length);
+    if (tabCounts[0] >= 1 && tabCounts.every(c => c === tabCounts[0])) {
+      const headers = lines[0].split("\t").map(c => c.trim());
+      const rows = lines.slice(1).map(l => {
+        const cells = l.split("\t").map(c => c.trim());
+        while (cells.length < headers.length) cells.push("");
+        return cells.slice(0, headers.length);
+      });
+      if (headers.length >= 2 && rows.length >= 1) {
+        return { headers, rows };
+      }
+    }
+
+    return null;
+  };
+
   const renderSingleDiagram = (d: any) => {
     if (!d) return null;
     figureNum++;
@@ -148,6 +229,67 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
     );
   };
 
+  /** Render a detected table as a styled HTML table matching academic paper aesthetics */
+  const renderTable = (parsed: { headers: string[]; rows: string[][]; caption?: string }, blockIdx: number) => {
+    tableNum++;
+    const cellStyle: React.CSSProperties = {
+      fontFamily: "'Times New Roman', Times, serif",
+      fontSize: config.bodySize,
+      lineHeight: 1.3,
+      padding: "3px 6px",
+      borderBottom: "0.5px solid #999",
+      textAlign: "left" as const,
+      verticalAlign: "top" as const,
+    };
+    const headerCellStyle: React.CSSProperties = {
+      ...cellStyle,
+      fontWeight: 700,
+      borderBottom: "1.5px solid #333",
+      borderTop: "1.5px solid #333",
+      textAlign: "center" as const,
+      backgroundColor: "#f8f8f8",
+    };
+    return (
+      <div key={`table-${blockIdx}`} style={{ margin: "8px 0", breakInside: "avoid-column" as const, width: "100%", overflow: "hidden" }}>
+        <table style={{
+          width: "100%",
+          borderCollapse: "collapse" as const,
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: config.bodySize,
+          margin: "4px 0",
+        }}>
+          <thead>
+            <tr>
+              {parsed.headers.map((h, ci) => (
+                <th key={ci} style={headerCellStyle}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {parsed.rows.map((row, ri) => (
+              <tr key={ri} style={ri === parsed.rows.length - 1 ? { borderBottom: "1.5px solid #333" } : undefined}>
+                {row.map((cell, ci) => (
+                  <td key={ci} style={cellStyle}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p style={{
+          fontFamily: "'Times New Roman', Times, serif",
+          fontSize: config.bodySize - 0.5,
+          fontStyle: "italic" as const,
+          textAlign: "center" as const,
+          marginTop: 3,
+          marginBottom: 6,
+          color: "#444",
+        }}>
+          Table {tableNum}. {parsed.caption || "Data summary"}
+        </p>
+      </div>
+    );
+  };
+
   const paragraphs = (content: string, label: string, sectionDiagrams: any[]) => {
     let text = content;
     if (label) text = cleanSectionContent(text, label);
@@ -158,29 +300,44 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
 
     blocks.forEach((block, i) => {
       // Check if this paragraph is exactly a diagram tag
-      const diagramMatch = block.match(/^!\[Diagram:.*?\]\((.*?)\)$/);
+      const diagramMatch = block.trim().match(/^!\[Diagram:[\s\S]*?\]\((.*?)\)$/);
       if (diagramMatch) {
         const diagId = diagramMatch[1];
         const diag = sectionDiagrams.find(d => d.id === diagId);
         if (diag) {
           elements.push(renderSingleDiagram(diag));
         }
-      } else {
-        // Strip other markdown but preserve the text
-        const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-        if (cleanP) {
-          elements.push(
-            <p key={`p-${i}`} style={{
-              fontFamily: "'Times New Roman', Times, serif",
-              fontSize: config.bodySize,
-              lineHeight: config.lineSpacing,
-              textAlign: "justify" as const,
-              margin: 0,
-              marginBottom: 3,
-              textIndent: i > 0 ? 14 : 0,
-            }}>{cleanP}</p>
-          );
-        }
+        return;
+      }
+
+      // Check if this block is a markdown pipe table
+      const mdTable = parseMarkdownTable(block);
+      if (mdTable) {
+        elements.push(renderTable(mdTable, i));
+        return;
+      }
+
+      // Check if this block is tab/comma-separated tabular data
+      const delimTable = parseDelimitedTable(block);
+      if (delimTable) {
+        elements.push(renderTable(delimTable, i));
+        return;
+      }
+
+      // Regular paragraph — strip markdown and render
+      const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+      if (cleanP) {
+        elements.push(
+          <p key={`p-${i}`} style={{
+            fontFamily: "'Times New Roman', Times, serif",
+            fontSize: config.bodySize,
+            lineHeight: config.lineSpacing,
+            textAlign: "justify" as const,
+            margin: 0,
+            marginBottom: 3,
+            textIndent: i > 0 ? 14 : 0,
+          }}>{cleanP}</p>
+        );
       }
     });
     return elements;

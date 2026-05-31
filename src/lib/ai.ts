@@ -19,9 +19,18 @@ function cleanAndParseJSON(text: string) {
   return JSON.parse(t);
 }
 
-/** Strip markdown formatting from AI output so raw **, *, #, etc. don't leak into the paper */
+/** Strip markdown formatting from AI output so raw **, *, #, etc. don't leak into the paper.
+ *  Preserves pipe-delimited table structures so they can be detected and rendered as tables. */
 export function stripMarkdown(text: string): string {
   let s = text;
+
+  // Extract and preserve markdown tables before stripping
+  const tablePlaceholders: string[] = [];
+  s = s.replace(/((?:^[ \t]*\|.+\|[ \t]*$\n?){2,})/gm, (match) => {
+    tablePlaceholders.push(match);
+    return `\n\n@@TABLE_PLACEHOLDER_${tablePlaceholders.length - 1}@@\n\n`;
+  });
+
   // Remove markdown headings (### Heading → Heading)
   s = s.replace(/^#{1,6}\s+/gm, "");
   // Remove bold+italic (***text*** or ___text___)
@@ -41,10 +50,20 @@ export function stripMarkdown(text: string): string {
   s = s.replace(/```[\s\S]*?```/g, "");
   // Remove inline code backticks
   s = s.replace(/`([^`]+)`/g, "$1");
-  // Remove horizontal rules
+  // Remove horizontal rules (but NOT table separator lines like |---|---|)
   s = s.replace(/^[-*_]{3,}$/gm, "");
   // Clean up excessive blank lines
   s = s.replace(/\n{3,}/g, "\n\n");
+
+  // Restore preserved tables
+  tablePlaceholders.forEach((table, i) => {
+    // Strip bold/italic inside table cells but keep pipe structure
+    let cleanTable = table;
+    cleanTable = cleanTable.replace(/\*{2}(.+?)\*{2}/g, "$1");
+    cleanTable = cleanTable.replace(/\*(.+?)\*/g, "$1");
+    s = s.replace(`@@TABLE_PLACEHOLDER_${i}@@`, cleanTable.trim());
+  });
+
   return s.trim();
 }
 
@@ -62,9 +81,10 @@ Strictly adhere to the following linguistic style, fonts, and structure:
 - Use precise verbs (e.g., "confirming the adequacy", "underscoring the importance", "attributed to").
 - Integrate citations in bracketed format (e.g., [1], [2]) seamlessly into your literature discussions.
 
-3. SCIENTIFIC VARIABLES & FONTS:
+3. SCIENTIFIC VARIABLES, FONTS & DATA TABLES:
 - Reference physical parameters and variables using standard scientific naming conventions (e.g., P for power, v for speed, h for hatch spacing, R²).
-- Do not use markdown symbols (*, **, ###, #) in your output. Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Keep it clean of any markdown tags.`;
+- Whenever you present quantitative data, comparative analysis, or results, you MUST format it as a tabular column using standard Markdown tables (with | and -).
+- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Markdown tables are the ONLY markdown you are allowed to use.`;
 
 async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 2048) {
   try {

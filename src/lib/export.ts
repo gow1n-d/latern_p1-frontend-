@@ -1,5 +1,5 @@
 import jsPDF from "jspdf";
-import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, ImageRun, convertInchesToTwip } from "docx";
+import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, ImageRun, convertInchesToTwip, Table, TableRow, TableCell, WidthType, BorderStyle } from "docx";
 import type { PaperSection } from "@/hooks/usePapers";
 import mermaid from "mermaid";
 import { stripMarkdown } from "@/lib/ai";
@@ -118,8 +118,94 @@ export const cleanSectionContent = (content: string, label: string) => {
       }
     }
   }
+  // Ensure markdown tables are isolated into their own blocks by padding them with double newlines
+  clean = clean.replace(/(^|\n)((?:[ \t]*\|.*\|[ \t]*$\n?){2,})/gm, "$1\n\n$2\n\n");
   return clean;
 };
+
+// ── Table detection utilities (shared across preview + exports) ──
+
+type ParsedTable = { headers: string[]; rows: string[][] };
+
+/** Detect if a text block is a pipe-delimited markdown table.
+ *  Returns parsed { headers, rows } or null if not a table. */
+function parseMarkdownTable(block: string): ParsedTable | null {
+  const lines = block.trim().split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+
+  // Check if it's a pipe-delimited table (at least one pipe in first two lines)
+  const isPipeTable = (lines[0].match(/\|/g) || []).length > 0 && (lines.length > 1 ? (lines[1].match(/\|/g) || []).length > 0 : true);
+  if (!isPipeTable) return null;
+
+  const parsePipeRow = (line: string): string[] => {
+    let cells = line.split("|").map(c => c.trim());
+    if (cells.length > 0 && cells[0] === "") cells.shift();
+    if (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
+    return cells;
+  };
+
+  // Check for separator line (|---|---|)
+  let headerIdx = 0;
+  let sepIdx = -1;
+  for (let i = 0; i < Math.min(lines.length, 3); i++) {
+    if (/^\|[\s\-:|\+]+\|$/.test(lines[i]) || /^[\s\-:|\+]+$/.test(lines[i])) {
+      sepIdx = i;
+      headerIdx = Math.max(0, i - 1);
+      break;
+    }
+  }
+
+  if (sepIdx === -1) {
+    // No separator — treat first row as header, rest as data
+    const firstCols = parsePipeRow(lines[0]);
+    if (firstCols.length < 2) return null;
+    const dataRows = lines.slice(1).map(l => parsePipeRow(l));
+    if (dataRows.length === 0) return null;
+    const consistent = dataRows.every(r => Math.abs(r.length - firstCols.length) <= 1);
+    if (!consistent) return null;
+    const padded = dataRows.map(r => {
+      while (r.length < firstCols.length) r.push("");
+      return r.slice(0, firstCols.length);
+    });
+    return { headers: firstCols, rows: padded };
+  }
+
+  // Standard markdown table with separator
+  const headers = parsePipeRow(lines[headerIdx]);
+  if (headers.length < 2) return null;
+  const dataLines = lines.slice(sepIdx + 1);
+  const dataRows = dataLines.map(l => {
+    const cells = parsePipeRow(l);
+    while (cells.length < headers.length) cells.push("");
+    return cells.slice(0, headers.length);
+  }).filter(r => r.some(c => c.length > 0));
+
+  if (dataRows.length === 0) return null;
+  return { headers, rows: dataRows };
+}
+
+/** Detect tab-separated data blocks */
+function parseDelimitedTable(block: string): ParsedTable | null {
+  const lines = block.trim().split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+
+  const tabCounts = lines.map(l => (l.match(/\t/g) || []).length);
+  if (tabCounts[0] >= 1 && tabCounts.every(c => c === tabCounts[0])) {
+    const headers = lines[0].split("\t").map(c => c.trim());
+    const rows = lines.slice(1).map(l => {
+      const cells = l.split("\t").map(c => c.trim());
+      while (cells.length < headers.length) cells.push("");
+      return cells.slice(0, headers.length);
+    });
+    if (headers.length >= 2 && rows.length >= 1) return { headers, rows };
+  }
+  return null;
+}
+
+/** Try to parse a text block as a table (pipe-delimited or tab-separated) */
+function parseTableFromBlock(block: string): ParsedTable | null {
+  return parseMarkdownTable(block) || parseDelimitedTable(block);
+}
 
 // Global image/diagram PNG cache — shared across exports
 const pngCache = new Map<string, string>();
@@ -375,7 +461,7 @@ export async function exportToPDF(
     y += headLh + 1;
     doc.setFontSize(config.bodySize);
     doc.setFont("times", config.abstractStyle === "italic" ? "italic" : "normal");
-    const absLines = doc.splitTextToSize(abstractSec.content, contentW);
+    const absLines = doc.splitTextToSize(abstractSec.content.trim(), contentW);
     for (const line of absLines) {
       checkSpace(lh);
       doc.text(line, margin, y);
@@ -393,7 +479,7 @@ export async function exportToPDF(
     doc.text(`${kwLabel}—`, margin, y);
     const labelW = doc.getTextWidth(`${kwLabel}—`);
     doc.setFont("times", "italic");
-    const kwLines = doc.splitTextToSize(kwSec.content, contentW - labelW);
+    const kwLines = doc.splitTextToSize(kwSec.content.trim(), contentW - labelW);
     doc.text(kwLines[0], margin + labelW, y);
     y += lh;
     for (let i = 1; i < kwLines.length; i++) {
@@ -465,6 +551,7 @@ function renderSingleColumn(
 
   let sectionNum = 0;
   let figureNum = 0;
+  let tableNum = 0;
   for (const section of bodySections) {
     sectionNum++;
     const minKeepTogether = headLhVal + 1 + lh * 2;
@@ -489,7 +576,7 @@ function renderSingleColumn(
 
     for (let bi = 0; bi < blocks.length; bi++) {
       const block = blocks[bi];
-      const diagramMatch = block.match(/^!\[Diagram:.*?\]\((.*?)\)$/);
+      const diagramMatch = block.trim().match(/^!\[Diagram:[\s\S]*?\]\((.*?)\)$/);
       if (diagramMatch) {
         const diagId = diagramMatch[1];
         const diagIdx = diags.findIndex(d => d.id === diagId);
@@ -504,7 +591,14 @@ function renderSingleColumn(
           const imgH = Math.min(imgW * aspectRatio, (ph - margin * 2) * 0.45);
           checkSpace(imgH + 10);
           try {
-            doc.addImage(pngData, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
+            const formatMatch = pngData.match(/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i);
+            const format = formatMatch ? formatMatch[1].toUpperCase() : "PNG";
+            const jsPdfFormat = (format === "JPEG" || format === "JPG") ? "JPEG" : format === "WEBP" ? "WEBP" : "PNG";
+            
+            // Strip the data URL prefix if present so jsPDF doesn't get confused
+            const base64Data = formatMatch ? pngData.replace(/^data:image\/[a-z]+;base64,/i, "") : pngData;
+
+            doc.addImage(base64Data, jsPdfFormat, margin + (contentW - imgW) / 2, y, imgW, imgH);
             y += imgH + 2.5;
             
             doc.setFontSize(config.bodySize - 1);
@@ -522,16 +616,87 @@ function renderSingleColumn(
           }
         }
       } else {
-        const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-        if (cleanP) {
-          const indent = bi > 0 ? 5 : 0;
-          const lines = doc.splitTextToSize(cleanP, contentW - indent);
-          for (let li = 0; li < lines.length; li++) {
-            checkSpace(lh);
-            doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
-            y += lh;
+        // ── Check for table data ──
+        const table = parseTableFromBlock(block);
+        if (table) {
+          tableNum++;
+          const colCount = table.headers.length;
+          const colW = contentW / colCount;
+          const cellPad = 1.5;
+          const cellFontSize = config.bodySize - 0.5;
+          const cellLh = lineH(cellFontSize, 1.15);
+
+          // Calculate needed height: header + rows
+          const rowH = cellLh + cellPad * 2;
+          const totalH = rowH * (1 + table.rows.length) + 6; // +6 for caption
+          checkSpace(Math.min(totalH, (ph - margin * 2) * 0.5));
+
+          // Top border
+          doc.setDrawColor(51);
+          doc.setLineWidth(0.4);
+          doc.line(margin, y, margin + contentW, y);
+          y += 0.3;
+
+          // Header row
+          doc.setFontSize(cellFontSize);
+          doc.setFont("times", "bold");
+          for (let ci = 0; ci < colCount; ci++) {
+            const cellX = margin + ci * colW;
+            const txt = doc.splitTextToSize(table.headers[ci], colW - cellPad * 2);
+            doc.text(txt[0] || "", cellX + colW / 2, y + cellPad + cellLh * 0.7, { align: "center" });
           }
-          y += 1.5;
+          y += rowH;
+
+          // Header bottom border
+          doc.setDrawColor(51);
+          doc.setLineWidth(0.3);
+          doc.line(margin, y, margin + contentW, y);
+          y += 0.3;
+
+          // Data rows
+          doc.setFont("times", "normal");
+          for (const row of table.rows) {
+            checkSpace(rowH);
+            for (let ci = 0; ci < colCount; ci++) {
+              const cellX = margin + ci * colW;
+              const txt = doc.splitTextToSize(row[ci] || "", colW - cellPad * 2);
+              doc.text(txt[0] || "", cellX + cellPad, y + cellPad + cellLh * 0.7);
+            }
+            y += rowH;
+            // Light row separator
+            doc.setDrawColor(204);
+            doc.setLineWidth(0.15);
+            doc.line(margin, y, margin + contentW, y);
+          }
+
+          // Bottom border
+          doc.setDrawColor(51);
+          doc.setLineWidth(0.4);
+          doc.line(margin, y, margin + contentW, y);
+          y += 2;
+
+          // Table caption
+          doc.setFontSize(config.bodySize - 1);
+          doc.setFont("times", "italic");
+          const capText = `Table ${tableNum}. Data summary`;
+          doc.text(capText, pw / 2, y, { align: "center" });
+          y += lh + 3;
+
+          // Reset font
+          doc.setFontSize(config.bodySize);
+          doc.setFont("times", "normal");
+        } else {
+          const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+          if (cleanP) {
+            const indent = bi > 0 ? 5 : 0;
+            const lines = doc.splitTextToSize(cleanP, contentW - indent);
+            for (let li = 0; li < lines.length; li++) {
+              checkSpace(lh);
+              doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
+              y += lh;
+            }
+            y += 1.5;
+          }
         }
       }
     }
@@ -582,6 +747,7 @@ function renderTwoColumn(
     | { type: "heading"; text: string } 
     | { type: "body"; text: string } 
     | { type: "gap"; h: number }
+    | { type: "table"; table: ParsedTable }
     | { type: "diagram"; diagram: any; pngData: string; sectionId: string };
 
   const items: Item[] = [];
@@ -595,18 +761,29 @@ function renderTwoColumn(
     items.push({ type: "gap", h: 3 });
     items.push({ type: "heading", text: `${prefix}${headText}` });
     
-    const cleanContent = section.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
-    const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
-    for (const p of paras) {
-      items.push({ type: "body", text: p });
-    }
+    const cleanContent = cleanSectionContent(section.content, section.label);
+    const blocks = cleanContent.split(/\n\s*\n/).filter(Boolean);
+    const pngs = sectionDiagramPngs[section.id] || [];
+    const diags = sectionDiagramInfos[section.id] || [];
 
-    const pngs = sectionDiagramPngs[section.id];
-    const diags = sectionDiagramInfos[section.id];
-    if (pngs && diags) {
-      for (let i = 0; i < pngs.length; i++) {
-        if (pngs[i] && diags[i]) {
-          items.push({ type: "diagram", diagram: diags[i], pngData: pngs[i]!, sectionId: section.id });
+    for (let bi = 0; bi < blocks.length; bi++) {
+      const block = blocks[bi];
+      const diagramMatch = block.trim().match(/^!\[Diagram:[\s\S]*?\]\((.*?)\)$/);
+      if (diagramMatch) {
+        const diagId = diagramMatch[1];
+        const diagIdx = diags.findIndex(d => d.id === diagId);
+        if (diagIdx !== -1 && pngs[diagIdx]) {
+          items.push({ type: "diagram", diagram: diags[diagIdx], pngData: pngs[diagIdx]!, sectionId: section.id });
+        }
+      } else {
+        const table = parseTableFromBlock(block);
+        if (table) {
+          items.push({ type: "table", table });
+        } else {
+          const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+          if (cleanP) {
+            items.push({ type: "body", text: cleanP });
+          }
         }
       }
     }
@@ -617,7 +794,7 @@ function renderTwoColumn(
     items.push({ type: "heading", text: config.headingStyle === "roman" ? "REFERENCES" : "References" });
     const refLines = refSection.content.split("\n").filter(Boolean);
     refLines.forEach((r, i) => {
-      const cleaned = r.replace(/^\[\d+\]\s*/, "");
+      const cleaned = stripMarkdown(r).replace(/^\[\d+\]\s*/, "");
       items.push({ type: "body", text: `[${i + 1}] ${cleaned}` });
     });
   }
@@ -646,6 +823,7 @@ function renderTwoColumn(
   };
 
   let figIndex = 0;
+  let tableNum = 0;
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
     if (item.type === "gap") {
@@ -678,7 +856,11 @@ function renderTwoColumn(
         const imgX = getX() + (colW - imgW) / 2; // center the image within the column
         checkCol(imgH + 10);
         try {
-          doc.addImage(pngData, "PNG", imgX, y, imgW, imgH);
+          const formatMatch = pngData.match(/^data:image\/(jpeg|png|webp|gif);base64,/i);
+          const format = formatMatch ? formatMatch[1].toUpperCase() : "PNG";
+          const jsPdfFormat = format === "JPEG" ? "JPEG" : format === "WEBP" ? "WEBP" : "PNG";
+
+          doc.addImage(pngData, jsPdfFormat, imgX, y, imgW, imgH);
           y += imgH + 2;
           
           doc.setFontSize(config.bodySize - 1);
@@ -695,6 +877,69 @@ function renderTwoColumn(
           console.error("jsPDF addImage twoColumn error:", imgErr);
         }
       }
+      continue;
+    }
+
+    if (item.type === "table") {
+      const { table } = item;
+      tableNum++;
+      const colCount = table.headers.length;
+      const cellW = colW / colCount;
+      const cellPad = 1.0;
+      const cellFontSize = config.bodySize - 0.5;
+      const cellLh = lineH(cellFontSize, 1.15);
+
+      const rowH = cellLh + cellPad * 2;
+      const totalH = rowH * (1 + table.rows.length) + 6;
+      checkCol(Math.min(totalH, (bottomLimit - margin) * 0.5));
+
+      // Top border
+      doc.setDrawColor(51);
+      doc.setLineWidth(0.4);
+      doc.line(getX(), y, getX() + colW, y);
+      y += 0.3;
+
+      // Header row
+      doc.setFontSize(cellFontSize);
+      doc.setFont("times", "bold");
+      for (let ci = 0; ci < colCount; ci++) {
+        const cellX = getX() + ci * cellW;
+        const txt = doc.splitTextToSize(table.headers[ci], cellW - cellPad * 2);
+        doc.text(txt[0] || "", cellX + cellW / 2, y + cellPad + cellLh * 0.7, { align: "center" });
+      }
+      y += rowH;
+
+      // Header bottom border
+      doc.setDrawColor(51);
+      doc.setLineWidth(0.3);
+      doc.line(getX(), y, getX() + colW, y);
+      y += 0.3;
+
+      // Data rows
+      doc.setFont("times", "normal");
+      for (const row of table.rows) {
+        checkCol(rowH);
+        for (let ci = 0; ci < colCount; ci++) {
+          const cellX = getX() + ci * cellW;
+          const txt = doc.splitTextToSize(row[ci] || "", cellW - cellPad * 2);
+          doc.text(txt[0] || "", cellX + cellPad, y + cellPad + cellLh * 0.7);
+        }
+        y += rowH;
+        // Light row separator
+        doc.setDrawColor(204);
+        doc.setLineWidth(0.15);
+        doc.line(getX(), y, getX() + colW, y);
+      }
+
+      // Bottom border
+      doc.setDrawColor(51);
+      doc.setLineWidth(0.4);
+      doc.line(getX(), y, getX() + colW, y);
+      y += 3.5;
+
+      // Reset font
+      doc.setFontSize(config.bodySize);
+      doc.setFont("times", "normal");
       continue;
     }
 
@@ -859,80 +1104,130 @@ export async function exportToWord(
     }));
   }
 
+  let tableNum = 0;
+  
   const bodyChildren: any[] = [];
   bodySections.forEach((s) => {
-    let cleanContent = s.content.replace(/```mermaid[\s\S]*?```/g, "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
-    cleanContent = cleanSectionContent(cleanContent, s.label);
-    const paras = cleanContent.split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
-    
     bodyChildren.push(new Paragraph({
       children: [new TextRun({ text: makeHeading(s.label), bold: true, size: config.headingSize * 2, font: "Times New Roman" })],
       spacing: { before: 200, after: 100 }
     }));
 
-    paras.forEach((p, i) => {
-      bodyChildren.push(new Paragraph({
-        children: [new TextRun({ text: p, size: config.bodySize * 2, font: "Times New Roman" })],
-        alignment: AlignmentType.JUSTIFIED,
-        indent: { firstLine: i === 0 ? 0 : convertInchesToTwip(0.25) },
-        spacing: { line: config.lineSpacing * 240 }
-      }));
-    });
-
+    const cleanContent = cleanSectionContent(s.content, s.label);
+    const blocks = cleanContent.split(/\n\s*\n/).filter(Boolean);
     const diags = sectionDiagramInfos[s.id] || [];
     const pngs = sectionDiagramPngs[s.id] || [];
-    diags.forEach((diagram, dIdx) => {
-      const imgData = pngs[dIdx] || diagram.imageData;
-      if (imgData) {
-        figureNum++;
-        let widthPercent = 0.85;
-        if (diagram.width === "40%") widthPercent = 0.40;
-        else if (diagram.width === "70%") widthPercent = 0.70;
-        else if (diagram.width === "100%") widthPercent = 0.95;
-        else if (diagram.width) widthPercent = parseFloat(diagram.width) / 100 || 0.85;
 
-        try {
-          let dims = { w: 400, h: 300 }; // Fallback dimensions
-          try {
-            dims = getImageDimensions(imgData);
-          } catch (e) {
-            console.warn("Failed to get image dimensions, using fallback");
+    blocks.forEach((block, i) => {
+      const diagramMatch = block.trim().match(/^!\[Diagram:[\s\S]*?\]\((.*?)\)$/);
+      if (diagramMatch) {
+        const diagId = diagramMatch[1];
+        const diagIdx = diags.findIndex(d => d.id === diagId);
+        if (diagIdx !== -1) {
+          const diagram = diags[diagIdx];
+          const imgData = pngs[diagIdx] || diagram.imageData;
+          if (imgData) {
+            figureNum++;
+            let widthPercent = 0.85;
+            if (diagram.width === "40%") widthPercent = 0.40;
+            else if (diagram.width === "70%") widthPercent = 0.70;
+            else if (diagram.width === "100%") widthPercent = 0.95;
+            else if (diagram.width) widthPercent = parseFloat(diagram.width) / 100 || 0.85;
+
+            try {
+              let dims = { w: 400, h: 300 }; // Fallback dimensions
+              try {
+                dims = getImageDimensions(imgData);
+              } catch (e) {
+                console.warn("Failed to get image dimensions, using fallback");
+              }
+              
+              const maxColWidthPx = config.columns === 2 ? 300 : 600;
+              const explicitWidthPx = Math.round(maxColWidthPx * widthPercent);
+              const h = Math.round(explicitWidthPx * (dims.h / dims.w));
+
+              bodyChildren.push(new Paragraph({
+                children: [
+                  new ImageRun({
+                    data: base64ToUint8Array(imgData),
+                    transformation: {
+                      width: explicitWidthPx,
+                      height: h
+                    },
+                    type: (imgData.match(/^data:image\/(jpeg|jpg)/i) ? "jpeg" : 
+                           imgData.match(/^data:image\/gif/i) ? "gif" : 
+                           imgData.match(/^data:image\/bmp/i) ? "bmp" : "png") as any
+                  })
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 200, after: 100 }
+              }));
+
+              bodyChildren.push(new Paragraph({
+                children: [new TextRun({ text: `Fig. ${figureNum}. ${diagram.caption || "Generated diagram representation."}`, italics: true, size: Math.max((config.bodySize - 1) * 2, 16), color: "444444", font: "Times New Roman" })],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 }
+              }));
+            } catch (e) {
+              console.error("Failed to add image to word document:", e);
+            }
+          } else {
+            figureNum++;
+            bodyChildren.push(new Paragraph({
+              children: [new TextRun({ text: `[Diagram rendering failed: Fig. ${figureNum}. ${diagram.caption}]`, italics: true, size: Math.max((config.bodySize - 1) * 2, 16), color: "FF0000", font: "Times New Roman" })],
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 200, after: 200 }
+            }));
           }
-          
-          const maxColWidthPx = config.columns === 2 ? 300 : 600;
-          const explicitWidthPx = Math.round(maxColWidthPx * widthPercent);
-          const h = Math.round(explicitWidthPx * (dims.h / dims.w));
-
-          bodyChildren.push(new Paragraph({
-            children: [
-              new ImageRun({
-                data: base64ToUint8Array(imgData),
-                transformation: {
-                  width: explicitWidthPx,
-                  height: h
-                },
-                type: "png"
-              })
-            ],
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 200, after: 100 }
-          }));
-
-          bodyChildren.push(new Paragraph({
-            children: [new TextRun({ text: `Fig. ${figureNum}. ${diagram.caption || "Generated diagram representation."}`, italics: true, size: Math.max((config.bodySize - 1) * 2, 16), color: "444444", font: "Times New Roman" })],
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 200 }
-          }));
-        } catch (e) {
-          console.error("Failed to add image to word document:", e);
         }
       } else {
-        figureNum++;
-        bodyChildren.push(new Paragraph({
-          children: [new TextRun({ text: `[Diagram rendering failed: Fig. ${figureNum}. ${diagram.caption}]`, italics: true, size: Math.max((config.bodySize - 1) * 2, 16), color: "FF0000", font: "Times New Roman" })],
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 200, after: 200 }
-        }));
+        const table = parseTableFromBlock(block);
+        if (table) {
+          tableNum++;
+          const tableRows = [table.headers, ...table.rows].map((row, ri) => {
+            return new TableRow({
+              children: row.map(cell => {
+                return new TableCell({
+                  children: [new Paragraph({
+                    children: [new TextRun({
+                      text: cell,
+                      bold: ri === 0,
+                      size: config.bodySize * 2,
+                      font: "Times New Roman"
+                    })],
+                    alignment: ri === 0 ? AlignmentType.CENTER : AlignmentType.LEFT,
+                  })],
+                  shading: ri === 0 ? { fill: "F8F8F8" } : undefined,
+                  margins: { top: 60, bottom: 60, left: 100, right: 100 },
+                });
+              }),
+            });
+          });
+
+          bodyChildren.push(new Table({
+            rows: tableRows,
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 6, color: "333333" },
+              bottom: { style: BorderStyle.SINGLE, size: 6, color: "333333" },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: "CCCCCC" },
+              insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+              left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+              right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+            }
+          }));
+
+        } else {
+          const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+          if (cleanP) {
+            bodyChildren.push(new Paragraph({
+              children: [new TextRun({ text: cleanP, size: config.bodySize * 2, font: "Times New Roman" })],
+              alignment: AlignmentType.JUSTIFIED,
+              indent: { firstLine: i === 0 ? 0 : convertInchesToTwip(0.25) },
+              spacing: { line: config.lineSpacing * 240 }
+            }));
+          }
+        }
       }
     });
   });
@@ -963,6 +1258,7 @@ export async function exportToWord(
       },
       {
         properties: {
+          type: SectionType.CONTINUOUS,
           column: config.columns === 2 ? { space: convertInchesToTwip(0.25), count: 2, equalWidth: true } : undefined
         },
         children: bodyChildren

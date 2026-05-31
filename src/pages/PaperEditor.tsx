@@ -14,7 +14,6 @@ import { generateSection, aiAssist, agenticAiAssist, humanizeText, enhanceUserDa
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, type SectionDiagram, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
-import DiagramGenerator from "@/components/DiagramGenerator";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -223,6 +222,7 @@ export default function PaperEditor() {
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
   const [isHumanizing, setIsHumanizing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastCursorPos = useRef<number | null>(null);
   const fileUploadRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -248,7 +248,6 @@ export default function PaperEditor() {
   const [isFixingValidation, setIsFixingValidation] = useState(false);
   const [isFixingPlagiarism, setIsFixingPlagiarism] = useState(false);
   const [showAuthorModal, setShowAuthorModal] = useState(false);
-  const [showDiagramGenerator, setShowDiagramGenerator] = useState(false);
   const [showMobileSections, setShowMobileSections] = useState(false);
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [exportState, setExportState] = useState<{
@@ -608,7 +607,14 @@ export default function PaperEditor() {
               if (s.id === activeSection) {
                 const currentList = s.diagrams || [];
                 const updatedList = [...currentList, newDiag];
-                const newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
+                const textarea = textareaRef.current;
+                let newContent = s.content;
+                const cursorPos = lastCursorPos.current ?? textarea?.selectionStart;
+                if (cursorPos !== undefined && cursorPos !== null) {
+                  newContent = s.content.substring(0, cursorPos) + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n` + s.content.substring(cursorPos);
+                } else {
+                  newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
+                }
                 return { 
                   ...s, 
                   content: newContent,
@@ -1774,11 +1780,6 @@ export default function PaperEditor() {
               {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
               {isHumanizing ? "Humanizing..." : "Humanize"}
             </Button>
-            {activeSection !== "title" && activeSection !== "keywords" && (
-              <Button variant="ghost" size="sm" className="gap-2 text-accent" onClick={() => setShowDiagramGenerator(true)} disabled={isBusy}>
-                <ImageIcon className="h-4 w-4" /> Diagram
-              </Button>
-            )}
             <Button variant="ghost" size="sm" className="gap-2" onClick={() => setShowAiPanel(!showAiPanel)}>
               <MessageSquare className="h-4 w-4 text-accent" /> AI Assist
             </Button>
@@ -1818,6 +1819,8 @@ export default function PaperEditor() {
                   <textarea
                     ref={textareaRef}
                     onKeyDown={handleTextareaKeyDown}
+                    onBlur={(e) => { lastCursorPos.current = e.target.selectionStart; }}
+                    onSelect={(e) => { lastCursorPos.current = e.currentTarget.selectionStart; }}
                     className="w-full min-h-[300px] sm:min-h-[500px] resize-none bg-transparent text-foreground leading-relaxed focus:outline-none placeholder:text-muted-foreground/50 font-body text-sm sm:text-base"
                     placeholder={`Start writing your ${currentSection?.label.toLowerCase()}... ${canGenerate ? 'or click "AI Generate" above' : ""}`}
                     value={currentSection?.content || ""}
@@ -1838,9 +1841,6 @@ export default function PaperEditor() {
                           <ImageIcon className="h-4 w-4 text-accent" /> Section Diagrams ({sectionDiagrams[activeSection]?.length || 0})
                         </h3>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => setShowDiagramGenerator(true)}>
-                            + Generate Diagram
-                          </Button>
                           <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => fileUploadRef.current?.click()}>
                             + Upload Image
                           </Button>
@@ -1939,15 +1939,6 @@ export default function PaperEditor() {
                         </div>
                       ) : currentSection?.content.trim() ? (
                         <div className="flex gap-4">
-                          <button
-                            onClick={() => setShowDiagramGenerator(true)}
-                            className="flex-1 rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
-                          >
-                            <ImageIcon className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
-                            <p className="text-sm font-medium text-foreground">Generate AI Diagram</p>
-                            <p className="text-xs text-muted-foreground mt-1">AI creates tailored flows or architectures</p>
-                          </button>
-                          
                           <button
                             onClick={() => fileUploadRef.current?.click()}
                             className="flex-1 rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
@@ -2110,16 +2101,6 @@ export default function PaperEditor() {
               {isCompletingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               <span className="text-[10px] font-medium">Complete</span>
             </button>
-            {activeSection !== "title" && activeSection !== "keywords" && (
-              <button
-                onClick={() => setShowDiagramGenerator(true)}
-                disabled={isBusy}
-                className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 shrink-0"
-              >
-                <ImageIcon className="h-4 w-4" />
-                <span className="text-[10px] font-medium">Diagram</span>
-              </button>
-            )}
           </div>
         </div>
       </main>
@@ -2510,68 +2491,6 @@ export default function PaperEditor() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Diagram Generator */}
-      <DiagramGenerator
-        show={showDiagramGenerator}
-        onClose={() => setShowDiagramGenerator(false)}
-        title={sections.find(s => s.id === "title")?.content || ""}
-        domain={paperMeta.domain}
-        section={activeSection}
-        sectionLabel={currentSection?.label || ""}
-        methodology={paperMeta.methodology}
-        results_summary={paperMeta.results_summary}
-        onDiagramGenerated={(sec, data) => {
-          const renderPngAndSave = async () => {
-            let finalData: SectionDiagram = { 
-              ...data, 
-              id: Math.random().toString(36).substring(2, 9), 
-              width: "100%" 
-            };
-            
-            if (data.type === "mermaid" && data.svg) {
-              try {
-                // Eagerly pre-convert Mermaid to PNG for instant compilation later!
-                const pngBase64 = await convertSvgToPng(data.svg);
-                finalData.imageData = pngBase64;
-              } catch (e) {
-                console.error("Failed to pre-convert Mermaid SVG to PNG:", e);
-              }
-            }
-
-            setSectionDiagrams(prev => {
-              const currentList = prev[sec] || [];
-              const updatedList = [...currentList, finalData];
-              return { ...prev, [sec]: updatedList };
-            });
-
-            setSections(prevSecs => {
-              const updatedSecs = prevSecs.map(s => {
-                if (s.id === sec) {
-                  const currentList = s.diagrams || [];
-                  const updatedList = [...currentList, finalData];
-                  const newContent = s.content + `\n\n![Diagram: ${finalData.caption}](${finalData.id})\n\n`;
-                  return { 
-                    ...s, 
-                    content: newContent,
-                    diagram: updatedList[0],
-                    diagrams: updatedList 
-                  };
-                }
-                return s;
-              });
-              autoSave(updatedSecs);
-              return updatedSecs;
-            });
-
-            toast.success("AI Diagram generated and pre-cached successfully!");
-          };
-
-          renderPngAndSave();
-        }}
-      />
-
-      {/* Premium Glassmorphic Export Overlay */}
       <AnimatePresence>
         {exportState?.active && (
           <motion.div
