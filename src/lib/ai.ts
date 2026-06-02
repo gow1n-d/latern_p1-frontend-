@@ -198,7 +198,8 @@ export type AgenticAction =
   | { type: "UPDATE_SECTION_CONTENT"; payload: { sectionId: string; content: string } }
   | { type: "UPDATE_METADATA"; payload: { domain?: string; methodology?: string; results_summary?: string } }
   | { type: "RESIZE_DIAGRAM"; payload: { sectionId: string; diagramId: string; width: string } }
-  | { type: "REMOVE_DIAGRAM"; payload: { sectionId: string; diagramId: string } };
+  | { type: "REMOVE_DIAGRAM"; payload: { sectionId: string; diagramId: string } }
+  | { type: "UPDATE_AUTHOR_DETAILS"; payload: any };
 
 export type AgenticResponse = {
   message: string;

@@ -32,8 +32,9 @@ export function useUserRole() {
   }, [user]);
 
   const isAdmin = roles.includes("admin") || user?.email === "admin@paperforge.com";
-  const isPro = roles.includes("pro") || isAdmin; // Admin gets pro access
-  const hasFullAccess = isAdmin;
+  const isStudentAdmin = user?.email === "studentadmin@paperforge.com";
+  const isPro = roles.includes("pro") || isAdmin || isStudentAdmin; // Admin and StudentAdmin get pro access
+  const hasFullAccess = isAdmin || isStudentAdmin;
 
   return { roles, loading, isAdmin, isPro, hasFullAccess };
 }

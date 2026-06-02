@@ -60,14 +60,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
       if (error) {
-        if (email === "admin@paperforge.com" && password === "superadmin") {
-          return { error: null }; // Bypass sign up error for superadmin
+        if ((email === "admin@paperforge.com" && password === "superadmin") || 
+            (email === "studentadmin@paperforge.com" && password === "studentadmin")) {
+          return { error: null };
         }
         return { error: error.message };
       }
       return { error: null };
     } catch (err) {
-      if (email === "admin@paperforge.com" && password === "superadmin") {
+      if ((email === "admin@paperforge.com" && password === "superadmin") || 
+          (email === "studentadmin@paperforge.com" && password === "studentadmin")) {
         return { error: null };
       }
       return { error: err instanceof Error ? err.message : "An error occurred" };
@@ -78,11 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        if (email === "admin@paperforge.com" && password === "superadmin") {
+        if ((email === "admin@paperforge.com" && password === "superadmin") || 
+            (email === "studentadmin@paperforge.com" && password === "studentadmin")) {
           const fakeUser = {
-            id: "00000000-0000-0000-0000-000000000000",
-            email: "admin@paperforge.com",
-            user_metadata: { full_name: "Super Admin" },
+            id: email === "admin@paperforge.com" ? "00000000-0000-0000-0000-000000000000" : "11111111-1111-1111-1111-111111111111",
+            email: email,
+            user_metadata: { full_name: email === "admin@paperforge.com" ? "Super Admin" : "Student Admin" },
             role: "authenticated",
           } as unknown as User;
           const fakeSession = {
@@ -98,11 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return { error: null };
     } catch (err) {
-      if (email === "admin@paperforge.com" && password === "superadmin") {
+      if ((email === "admin@paperforge.com" && password === "superadmin") || 
+          (email === "studentadmin@paperforge.com" && password === "studentadmin")) {
         const fakeUser = {
-          id: "00000000-0000-0000-0000-000000000000",
-          email: "admin@paperforge.com",
-          user_metadata: { full_name: "Super Admin" },
+          id: email === "admin@paperforge.com" ? "00000000-0000-0000-0000-000000000000" : "11111111-1111-1111-1111-111111111111",
+          email: email,
+          user_metadata: { full_name: email === "admin@paperforge.com" ? "Super Admin" : "Student Admin" },
           role: "authenticated",
         } as unknown as User;
         const fakeSession = {

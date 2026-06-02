@@ -23,9 +23,8 @@ export default function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const isSuperAdminBypass = 
-      email.trim() === "superadmin" || 
-      password.trim() === "superadmin";
+    const isSuperAdminBypass = password.trim() === "superadmin";
+    const isStudentAdminBypass = password.trim() === "studentadmin";
 
     let targetEmail = email;
     let targetPassword = password;
@@ -35,6 +34,10 @@ export default function AuthPage() {
       targetEmail = "admin@paperforge.com";
       targetPassword = "superadmin";
       targetName = "Super Admin";
+    } else if (isStudentAdminBypass) {
+      targetEmail = "studentadmin@paperforge.com";
+      targetPassword = "studentadmin";
+      targetName = "Student Admin";
     } else {
       if (!email.trim() || !password.trim()) { toast.error("Please fill in all fields"); return; }
       if (isSignUp && !name.trim()) { toast.error("Please enter your name"); return; }
@@ -43,7 +46,7 @@ export default function AuthPage() {
 
     setLoading(true);
     let result;
-    if (isSuperAdminBypass) {
+    if (isSuperAdminBypass || isStudentAdminBypass) {
       // First try to sign in
       result = await signIn(targetEmail, targetPassword);
       if (result.error) {
@@ -63,7 +66,7 @@ export default function AuthPage() {
 
     if (result.error) {
       toast.error(result.error);
-    } else if (isSignUp && !isSuperAdminBypass) {
+    } else if (isSignUp && !isSuperAdminBypass && !isStudentAdminBypass) {
       toast.success("Account created! You can now sign in.");
       setIsSignUp(false);
     } else {
