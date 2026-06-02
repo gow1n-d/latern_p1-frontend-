@@ -4,13 +4,57 @@ import type { PaperSection } from "@/hooks/usePapers";
 import mermaid from "mermaid";
 import { stripMarkdown } from "@/lib/ai";
 
+type Author = {
+  name: string;
+  department: string;
+  institution: string;
+  city: string;
+  email: string;
+};
+
 type AuthorInfo = {
+  authors?: Author[];
   authorNames?: string[];
   department?: string;
   institution?: string;
   city?: string;
   email?: string;
 };
+
+function getProcessedAuthors(author?: AuthorInfo) {
+  const authors = author?.authors?.filter(a => a.name.trim()) || [];
+  if (authors.length === 0) {
+    const names = author?.authorNames?.filter(n => n.trim()) || [];
+    if (names.length > 0) {
+      return {
+        authors: names.map(name => ({ name, department: author?.department||"", institution: author?.institution||"", city: author?.city||"", email: author?.email||"" })),
+        uniqueAffiliations: [{ dept: author?.department || "", inst: author?.institution || "", city: author?.city || "" }],
+        authorAffiliationIndices: names.map(() => (author?.department || author?.institution || author?.city) ? 0 : -1)
+      };
+    }
+    return { authors: [], uniqueAffiliations: [], authorAffiliationIndices: [] };
+  }
+  
+  const uniqueAffiliations: { dept: string, inst: string, city: string }[] = [];
+  const authorAffiliationIndices: number[] = [];
+  
+  authors.forEach(a => {
+    const affiliationStr = `${a.department}|${a.institution}|${a.city}`;
+    if (!a.department && !a.institution && !a.city) {
+      authorAffiliationIndices.push(-1);
+      return;
+    }
+    
+    let index = uniqueAffiliations.findIndex(u => `${u.dept}|${u.inst}|${u.city}` === affiliationStr);
+    if (index === -1) {
+      uniqueAffiliations.push({ dept: a.department, inst: a.institution, city: a.city });
+      index = uniqueAffiliations.length - 1;
+    }
+    authorAffiliationIndices.push(index);
+  });
+
+  return { authors, uniqueAffiliations, authorAffiliationIndices };
+}
 
 type JournalConfig = {
   columns: 1 | 2;
@@ -422,26 +466,40 @@ export async function exportToPDF(
   y += 3;
 
   // ── Authors ──
-  const names = author?.authorNames?.filter(n => n.trim()) || [];
-  if (names.length > 0) {
+  const { authors, uniqueAffiliations, authorAffiliationIndices } = getProcessedAuthors(author);
+  if (authors.length > 0) {
     doc.setFontSize(10);
     doc.setFont("times", "italic");
-    doc.text(names.join(", "), pw / 2, y, { align: "center" });
+    
+    const unicodeSuperscripts = ["", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
+    const getSuperscript = (num: number) => num < 10 ? unicodeSuperscripts[num] : `^${num}`;
+
+    const authorStr = authors.map((a, i) => {
+      const affilIndex = authorAffiliationIndices[i];
+      const markerNum = uniqueAffiliations.length > 1 && affilIndex !== -1 ? affilIndex + 1 : 
+                        (uniqueAffiliations.length === 1 && affilIndex !== -1 ? 1 : null);
+      return markerNum ? `${a.name}${getSuperscript(markerNum)}` : a.name;
+    }).join(", ");
+    
+    doc.text(authorStr, pw / 2, y, { align: "center" });
     y += 4;
-    const affiliation = [author?.department, author?.institution, author?.city].filter(Boolean).join(", ");
-    if (affiliation) {
+    
+    uniqueAffiliations.forEach((affil, i) => {
+      const markerNum = uniqueAffiliations.length > 1 ? i + 1 : 1;
       doc.setFontSize(8.5);
       doc.setFont("times", "italic");
       doc.setTextColor(51);
-      doc.text(affiliation, pw / 2, y, { align: "center" });
+      doc.text(`${getSuperscript(markerNum)} ${[affil.dept, affil.inst, affil.city].filter(Boolean).join(", ")}`, pw / 2, y, { align: "center" });
       doc.setTextColor(0);
       y += 3.5;
-    }
-    if (author?.email) {
+    });
+
+    const emails = authors.filter(a => a.email).map(a => a.email).join(", ");
+    if (emails) {
       doc.setFontSize(8);
       doc.setFont("courier", "normal");
       doc.setTextColor(68);
-      doc.text(author.email, pw / 2, y, { align: "center" });
+      doc.text(emails, pw / 2, y, { align: "center" });
       doc.setTextColor(0);
       y += 3.5;
     }
@@ -515,11 +573,36 @@ export async function exportToPDF(
     await Promise.all(promises);
   }
 
+  const sectionFormulaPngs: Record<string, string[]> = {};
+  const formulaPromises = bodySections.map(async (s) => {
+    const formulas: string[] = [];
+    const blocks = cleanSectionContent(s.content, s.label).split(/\n\s*\n/).filter(Boolean);
+    for (const block of blocks) {
+      const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+      for (const part of parts) {
+        if (part.startsWith("$$") || part.startsWith("\\[")) {
+          const code = part.startsWith("$$") ? part.slice(2, -2) : part.slice(2, -2);
+          if (code && code.trim()) {
+            try {
+              const url = `https://latex.codecogs.com/png.image?\\dpi{300}\\bg_white\\space ${encodeURIComponent(code.trim())}`;
+              const png = await imageUrlToPng(url);
+              formulas.push(png);
+            } catch (e) {
+              formulas.push("");
+            }
+          }
+        }
+      }
+    }
+    if (formulas.length > 0) sectionFormulaPngs[s.id] = formulas;
+  });
+  await Promise.all(formulaPromises);
+
   onProgress?.(3); // Step 3: Laying out pages
   if (config.columns === 2) {
-    renderTwoColumn(doc, bodySections, refSection, config, margin, pw, ph, y, sectionDiagramPngs, sectionDiagramInfos);
+    renderTwoColumn(doc, bodySections, refSection, config, margin, pw, ph, y, sectionDiagramPngs, sectionDiagramInfos, sectionFormulaPngs);
   } else {
-    renderSingleColumn(doc, bodySections, refSection, config, margin, contentW, pw, ph, y, sectionDiagramPngs, sectionDiagramInfos);
+    renderSingleColumn(doc, bodySections, refSection, config, margin, contentW, pw, ph, y, sectionDiagramPngs, sectionDiagramInfos, sectionFormulaPngs);
   }
 
   // ── Footer on every page ──
@@ -541,7 +624,8 @@ export async function exportToPDF(
 function renderSingleColumn(
   doc: jsPDF, bodySections: PaperSection[], refSection: PaperSection | undefined,
   config: JournalConfig, margin: number, contentW: number, pw: number, ph: number, y: number,
-  sectionDiagramPngs: Record<string, (string | null)[]>, sectionDiagramInfos: Record<string, any[]>
+  sectionDiagramPngs: Record<string, (string | null)[]>, sectionDiagramInfos: Record<string, any[]>,
+  sectionFormulaPngs: Record<string, string[]>
 ) {
   const lh = lineH(config.bodySize, config.lineSpacing);
   const headLhVal = lineH(config.headingSize, 1.2);
@@ -686,17 +770,43 @@ function renderSingleColumn(
           doc.setFontSize(config.bodySize);
           doc.setFont("times", "normal");
         } else {
-          const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-          if (cleanP) {
-            const indent = bi > 0 ? 5 : 0;
-            const lines = doc.splitTextToSize(cleanP, contentW - indent);
-            for (let li = 0; li < lines.length; li++) {
-              checkSpace(lh);
-              doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
-              y += lh;
+          const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+          parts.forEach((part, pIdx) => {
+            if (!part) return;
+            if (part.startsWith("$$") || part.startsWith("\\[")) {
+              const pngData = sectionFormulaPngs[section.id]?.shift();
+              if (pngData) {
+                const dims = getImageDimensions(pngData);
+                const aspectRatio = dims.h / dims.w;
+                const imgW = Math.min(contentW * 0.8, dims.w * 0.084666); // 300 DPI px to mm
+                const imgH = imgW * aspectRatio;
+                checkSpace(imgH + 10);
+                try {
+                  const formatMatch = pngData.match(/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i);
+                  const format = formatMatch ? formatMatch[1].toUpperCase() : "PNG";
+                  const jsPdfFormat = (format === "JPEG" || format === "JPG") ? "JPEG" : format === "WEBP" ? "WEBP" : "PNG";
+                  const base64Data = formatMatch ? pngData.replace(/^data:image\/[a-z]+;base64,/i, "") : pngData;
+
+                  doc.addImage(base64Data, jsPdfFormat, margin + (contentW - imgW) / 2, y, imgW, imgH);
+                  y += imgH + 2.5;
+                } catch (e) {
+                  console.error("Failed to add formula to PDF:", e);
+                }
+              }
+            } else {
+              const cleanP = stripMarkdown(part).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+              if (cleanP) {
+                const indent = (bi > 0 && pIdx === 0) ? 5 : 0;
+                const lines = doc.splitTextToSize(cleanP, contentW - indent);
+                for (let li = 0; li < lines.length; li++) {
+                  checkSpace(lh);
+                  doc.text(lines[li], margin + (li === 0 ? indent : 0), y);
+                  y += lh;
+                }
+                y += 1.5;
+              }
             }
-            y += 1.5;
-          }
+          });
         }
       }
     }
@@ -735,7 +845,8 @@ function renderSingleColumn(
 function renderTwoColumn(
   doc: jsPDF, bodySections: PaperSection[], refSection: PaperSection | undefined,
   config: JournalConfig, margin: number, pw: number, ph: number, startY: number,
-  sectionDiagramPngs: Record<string, (string | null)[]>, sectionDiagramInfos: Record<string, any[]>
+  sectionDiagramPngs: Record<string, (string | null)[]>, sectionDiagramInfos: Record<string, any[]>,
+  sectionFormulaPngs: Record<string, string[]>
 ) {
   const gap = 5;
   const colW = (pw - margin * 2 - gap) / 2;
@@ -748,7 +859,8 @@ function renderTwoColumn(
     | { type: "body"; text: string } 
     | { type: "gap"; h: number }
     | { type: "table"; table: ParsedTable }
-    | { type: "diagram"; diagram: any; pngData: string; sectionId: string };
+    | { type: "diagram"; diagram: any; pngData: string; sectionId: string }
+    | { type: "formula"; pngData: string };
 
   const items: Item[] = [];
 
@@ -780,10 +892,21 @@ function renderTwoColumn(
         if (table) {
           items.push({ type: "table", table });
         } else {
-          const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-          if (cleanP) {
-            items.push({ type: "body", text: cleanP });
-          }
+          const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+          parts.forEach((part) => {
+            if (!part) return;
+            if (part.startsWith("$$") || part.startsWith("\\[")) {
+              const pngData = sectionFormulaPngs[section.id]?.shift();
+              if (pngData) {
+                items.push({ type: "formula", pngData });
+              }
+            } else {
+              const cleanP = stripMarkdown(part).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+              if (cleanP) {
+                items.push({ type: "body", text: cleanP });
+              }
+            }
+          });
         }
       }
     }
@@ -875,6 +998,28 @@ function renderTwoColumn(
           y += 1.5;
         } catch (imgErr) {
           console.error("jsPDF addImage twoColumn error:", imgErr);
+        }
+      }
+      continue;
+    }
+
+    if (item.type === "formula") {
+      const pngData = item.pngData;
+      if (pngData) {
+        const dims = getImageDimensions(pngData);
+        const aspectRatio = dims.h / dims.w;
+        const imgW = Math.min(colW * 0.9, dims.w * 0.084666); // 300 DPI px to mm
+        const imgH = imgW * aspectRatio;
+        const imgX = getX() + (colW - imgW) / 2;
+        checkCol(imgH + 8);
+        try {
+          const formatMatch = pngData.match(/^data:image\/(jpeg|png|webp|gif);base64,/i);
+          const format = formatMatch ? formatMatch[1].toUpperCase() : "PNG";
+          const jsPdfFormat = format === "JPEG" ? "JPEG" : format === "WEBP" ? "WEBP" : "PNG";
+          doc.addImage(pngData, jsPdfFormat, imgX, y, imgW, imgH);
+          y += imgH + 2;
+        } catch (imgErr) {
+          console.error("jsPDF formula addImage error:", imgErr);
         }
       }
       continue;
@@ -1014,8 +1159,7 @@ export async function exportToWord(
   const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && (s.content.trim() || s.diagram || (s.diagrams && s.diagrams.length > 0)));
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
-  const names = author?.authorNames?.filter(n => n.trim()) || [];
-  const affiliation = [author?.department, author?.institution, author?.city].filter(Boolean).join(", ");
+  const { authors, uniqueAffiliations, authorAffiliationIndices } = getProcessedAuthors(author);
 
   let sectionNum = 0;
   const makeHeading = (label: string) => {
@@ -1044,6 +1188,33 @@ export async function exportToWord(
     await Promise.all(promises);
   }
 
+  const sectionFormulaPngs: Record<string, string[]> = {};
+  if (!skipDiagrams) {
+    const formulaPromises = bodySections.map(async (s) => {
+      const formulas: string[] = [];
+      const blocks = cleanSectionContent(s.content, s.label).split(/\n\s*\n/).filter(Boolean);
+      for (const block of blocks) {
+        const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+        for (const part of parts) {
+          if (part.startsWith("$$") || part.startsWith("\\[")) {
+            const code = part.startsWith("$$") ? part.slice(2, -2) : part.slice(2, -2);
+            if (code && code.trim()) {
+              try {
+                const url = `https://latex.codecogs.com/png.image?\\dpi{300}\\bg_white\\space ${encodeURIComponent(code.trim())}`;
+                const png = await imageUrlToPng(url);
+                formulas.push(png);
+              } catch (e) {
+                formulas.push("");
+              }
+            }
+          }
+        }
+      }
+      if (formulas.length > 0) sectionFormulaPngs[s.id] = formulas;
+    });
+    await Promise.all(formulaPromises);
+  }
+
   onProgress?.(3);
   let figureNum = 0;
 
@@ -1060,21 +1231,43 @@ export async function exportToWord(
     alignment: AlignmentType.CENTER,
     spacing: { after: 200 }
   }));
-  if (names.length > 0) {
+  if (authors.length > 0) {
+    const nameRuns = [];
+    authors.forEach((a, i) => {
+      nameRuns.push(new TextRun({ text: a.name, italics: true, size: 20, font: "Times New Roman" }));
+      const affilIndex = authorAffiliationIndices[i];
+      const markerNum = uniqueAffiliations.length > 1 && affilIndex !== -1 ? affilIndex + 1 : 
+                        (uniqueAffiliations.length === 1 && affilIndex !== -1 ? 1 : null);
+      if (markerNum) {
+        nameRuns.push(new TextRun({ text: markerNum.toString(), superScript: true, italics: true, size: 20, font: "Times New Roman" }));
+      }
+      if (i < authors.length - 1) {
+        nameRuns.push(new TextRun({ text: ", ", italics: true, size: 20, font: "Times New Roman" }));
+      }
+    });
+
     titleChildren.push(new Paragraph({
-      children: [new TextRun({ text: names.join(", "), italics: true, size: 20, font: "Times New Roman" })],
+      children: nameRuns,
       alignment: AlignmentType.CENTER,
     }));
   }
-  if (affiliation) {
+  
+  uniqueAffiliations.forEach((affil, i) => {
+    const markerNum = uniqueAffiliations.length > 1 ? i + 1 : 1;
+    const affilText = [affil.dept, affil.inst, affil.city].filter(Boolean).join(", ");
     titleChildren.push(new Paragraph({
-      children: [new TextRun({ text: affiliation, italics: true, size: 17, color: "333333", font: "Times New Roman" })],
+      children: [
+        new TextRun({ text: markerNum.toString(), superScript: true, italics: true, size: 17, color: "333333", font: "Times New Roman" }),
+        new TextRun({ text: " " + affilText, italics: true, size: 17, color: "333333", font: "Times New Roman" })
+      ],
       alignment: AlignmentType.CENTER,
     }));
-  }
-  if (author?.email) {
+  });
+
+  const emails = authors.filter(a => a.email).map(a => a.email).join(", ");
+  if (emails) {
     titleChildren.push(new Paragraph({
-      children: [new TextRun({ text: author.email, font: "Courier New", size: 16, color: "444444" })],
+      children: [new TextRun({ text: emails, font: "Courier New", size: 16, color: "444444" })],
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 }
     }));
@@ -1218,15 +1411,46 @@ export async function exportToWord(
           }));
 
         } else {
-          const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-          if (cleanP) {
-            bodyChildren.push(new Paragraph({
-              children: [new TextRun({ text: cleanP, size: config.bodySize * 2, font: "Times New Roman" })],
-              alignment: AlignmentType.JUSTIFIED,
-              indent: { firstLine: i === 0 ? 0 : convertInchesToTwip(0.25) },
-              spacing: { line: config.lineSpacing * 240 }
-            }));
-          }
+          const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+          parts.forEach((part, pIdx) => {
+            if (!part) return;
+            if (part.startsWith("$$") || part.startsWith("\\[")) {
+              const imgData = sectionFormulaPngs[s.id]?.shift();
+              if (imgData) {
+                try {
+                  let dims = { w: 400, h: 100 };
+                  try { dims = getImageDimensions(imgData); } catch(e) {}
+                  const explicitWidthPx = Math.min(600, Math.round(dims.w * 0.32)); // 300 DPI px to 96 DPI
+                  const h = Math.round(explicitWidthPx * (dims.h / dims.w));
+                  bodyChildren.push(new Paragraph({
+                    children: [
+                      new ImageRun({
+                        data: base64ToUint8Array(imgData),
+                        transformation: { width: explicitWidthPx, height: h },
+                        type: (imgData.match(/^data:image\/(jpeg|jpg)/i) ? "jpeg" : 
+                               imgData.match(/^data:image\/gif/i) ? "gif" : 
+                               imgData.match(/^data:image\/bmp/i) ? "bmp" : "png") as any
+                      })
+                    ],
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 200, after: 200 }
+                  }));
+                } catch (e) {
+                  console.error("Failed to add formula to word:", e);
+                }
+              }
+            } else {
+              const cleanP = stripMarkdown(part).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+              if (cleanP) {
+                bodyChildren.push(new Paragraph({
+                  children: [new TextRun({ text: cleanP, size: config.bodySize * 2, font: "Times New Roman" })],
+                  alignment: AlignmentType.JUSTIFIED,
+                  indent: { firstLine: (i === 0 && pIdx === 0) ? 0 : convertInchesToTwip(0.25) },
+                  spacing: { line: config.lineSpacing * 240 }
+                }));
+              }
+            }
+          });
         }
       }
     });
@@ -1276,7 +1500,7 @@ export function buildLaTeXContent(sections: PaperSection[], journal: string, pap
   const title = (sections.find((s) => s.id === "title")?.content || "Untitled").split("\n")[0];
   const abstract = sections.find((s) => s.id === "abstract")?.content || "";
   const keywords = sections.find((s) => s.id === "keywords")?.content || "";
-  const names = author?.authorNames?.filter(n => n.trim()) || [];
+  const { authors, uniqueAffiliations, authorAffiliationIndices } = getProcessedAuthors(author);
 
   const docClassMap: Record<string, string> = {
     ieee: "IEEEtran", "ieee-conf": "IEEEtran", acm: "acmart", "acm-conf": "acmart",
@@ -1294,7 +1518,22 @@ export function buildLaTeXContent(sections: PaperSection[], journal: string, pap
 \\usepackage{amsmath}
 
 \\title{${escapeLatex(title)}}
-\\author{${names.length > 0 ? names.map(n => escapeLatex(n)).join(" \\and ") : "Author Name"}}
+\\author{
+${authors.length > 0 ? authors.map((a, i) => {
+    const affilIndex = authorAffiliationIndices[i];
+    const markerNum = uniqueAffiliations.length > 1 && affilIndex !== -1 ? affilIndex + 1 : 
+                      (uniqueAffiliations.length === 1 && affilIndex !== -1 ? 1 : null);
+    return `${escapeLatex(a.name)}${markerNum ? `\\textsuperscript{${markerNum}}` : ""}`;
+  }).join(" \\and ") : "Author Name"}
+\\\\
+${uniqueAffiliations.map((affil, i) => {
+    const markerNum = uniqueAffiliations.length > 1 ? i + 1 : 1;
+    const affilText = [affil.dept, affil.inst, affil.city].filter(Boolean).map(escapeLatex).join(", ");
+    return `\\small \\textsuperscript{${markerNum}}\\textit{${affilText}}`;
+  }).join(" \\\\ ")}
+\\\\
+${authors.some(a => a.email) ? `\\small \\texttt{${authors.filter(a => a.email).map(a => escapeLatex(a.email)).join(", ")}}` : ""}
+}
 \\date{\\today}
 
 \\begin{document}

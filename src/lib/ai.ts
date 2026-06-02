@@ -2,6 +2,9 @@ const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "nvapi-gLbkmFsyKQO
 const NVIDIA_BASE_URL = "/api/nvidia/v1";
 const NVIDIA_MODEL = "meta/llama-3.1-8b-instruct";
 
+import { getSystemPrompt } from './stealth/prompts';
+import { postprocess } from './stealth/postprocess';
+
 type StreamOptions = {
   onDelta: (text: string) => void;
   onDone: () => void;
@@ -81,10 +84,15 @@ Strictly adhere to the following linguistic style, fonts, and structure:
 - Use precise verbs (e.g., "confirming the adequacy", "underscoring the importance", "attributed to").
 - Integrate citations in bracketed format (e.g., [1], [2]) seamlessly into your literature discussions.
 
-3. SCIENTIFIC VARIABLES, FONTS & DATA TABLES:
+3. SCIENTIFIC VARIABLES, FONTS, DATA TABLES & MATHEMATICAL FORMULAS:
 - Reference physical parameters and variables using standard scientific naming conventions (e.g., P for power, v for speed, h for hatch spacing, R²).
+- MATHEMATICAL EQUATIONS: Whenever you discuss algorithms, theorems (e.g. Naive Bayes), or complex math, you MUST include the exact mathematical formula formatted as a block LaTeX equation (e.g., 
+$$
+ P(A|B) = \\frac{P(B|A)P(A)}{P(B)} 
+$$
+).
 - Whenever you present quantitative data, comparative analysis, or results, you MUST format it as a tabular column using standard Markdown tables (with | and -).
-- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Markdown tables are the ONLY markdown you are allowed to use.`;
+- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Markdown tables and LaTeX blocks ($$) are the ONLY markdown you are allowed to use.`;
 
 async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 2048) {
   try {
@@ -134,12 +142,12 @@ async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 204
   }
 }
 
-async function nvidiaJSON(prompt: string, maxTokens = 1024): Promise<any> {
+async function nvidiaJSON(prompt: string, maxTokens = 1024, modelOverride?: string): Promise<any> {
   const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
     body: JSON.stringify({
-      model: NVIDIA_MODEL,
+      model: modelOverride || NVIDIA_MODEL,
       messages: [{ role: "system", content: "Respond with valid JSON only. No markdown." }, { role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: maxTokens,
@@ -189,7 +197,6 @@ Apply the instruction. Output only the improved text.`;
 export type AgenticAction =
   | { type: "UPDATE_SECTION_CONTENT"; payload: { sectionId: string; content: string } }
   | { type: "UPDATE_METADATA"; payload: { domain?: string; methodology?: string; results_summary?: string } }
-  | { type: "UPDATE_AUTHOR_DETAILS"; payload: { authorNames?: string[]; department?: string; institution?: string; city?: string; email?: string } }
   | { type: "RESIZE_DIAGRAM"; payload: { sectionId: string; diagramId: string; width: string } }
   | { type: "REMOVE_DIAGRAM"; payload: { sectionId: string; diagramId: string } };
 
@@ -226,7 +233,8 @@ The user gave this instruction: "${params.instruction}".
 Journal Style: ${params.journal}
 Active Section in Editor: "${activeSectionLabel}" (ID: "${params.activeSectionId || ""}")
 
-You have capability to make changes to the entire paper by returning a list of structured actions.
+You are operating in SECTION-SPECIFIC MODE. You are assisting the user in editing their active section.
+You have the capability to make changes to the ACTIVE SECTION ONLY by returning a list of structured actions.
 Here is the current state of the paper:
 
 ### Paper Metadata:
@@ -245,7 +253,10 @@ Email: "${params.authorDetails.email || ""}"
 ${sectionsSummary}
 
 ## Your Task:
-Interpret the user's instruction and decide which actions are needed to fulfill it. You can generate multiple actions to edit the paper.
+Interpret the user's instruction specifically as it applies to the ACTIVE SECTION.
+- If the user is asking a question (e.g., "explain this", "summarize"), provide a thorough explanation in the "message" field and leave the "actions" array EMPTY.
+- If the user is asking to modify the text based on a query, analyze the content and generate the necessary actions to fulfill the request ONLY FOR THE ACTIVE SECTION.
+
 Always output a valid JSON object in this exact format:
 {
   "message": "A polite explanation of what changes you have made to fulfill their instruction.",
@@ -266,15 +277,6 @@ Always output a valid JSON object in this exact format:
       }
     },
     {
-      "type": "UPDATE_AUTHOR_DETAILS",
-      "payload": {
-        "authorNames": ["John Doe", "Sarah Jenkins"],
-        "department": "...",
-        "institution": "...",
-        "city": "...",
-        "email": "..."
-      }
-    },
     {
       "type": "RESIZE_DIAGRAM",
       "payload": {
@@ -294,9 +296,13 @@ Always output a valid JSON object in this exact format:
 }
 
 Note:
-- Only generate actions that are actually requested or highly relevant.
-- Do NOT alter metadata or authors unless the user's instruction asks to change them.
-- For UPDATE_SECTION_CONTENT, write high-quality, professional, IEEE-grade academic content.
+- CONVERSATIONAL ABILITY: If the user asks for an explanation or summary, provide a comprehensive answer in the "message" field and return an empty "actions" array.
+- STRICT INSTRUCTION ADHERENCE: Do exactly what the user instructs. Do NOT hallucinate, assume, or guess additional requirements.
+- IMMUTABLE FIELDS (CRITICAL): You are STRICTLY FORBIDDEN from modifying the paper title, author details, or ANY section other than the active section. NEVER return an UPDATE_AUTHOR_DETAILS action. NEVER return an UPDATE_SECTION_CONTENT for a section ID other than the active section.
+- CONTEXT ONLY: The rest of the paper sections are provided for context only so you understand the flow of the document. Do not modify them.
+- DO NOT rewrite or alter ANY section unless the user's instruction specifically requires it.
+- If the user asks for a specific change (e.g., "add this sentence", "fix grammar"), only apply that change and PRESERVE all existing content, equations, tables, and structures exactly.
+- For UPDATE_SECTION_CONTENT, strictly follow the user's instruction while maintaining high-quality, professional, IEEE-grade academic content.
 - Respond with a valid JSON object ONLY. No markdown wrappers or explanation outside the JSON.`;
 
   try {
@@ -315,35 +321,50 @@ export async function humanizeText(
   params: { content: string; journal: string },
   opts: StreamOptions
 ) {
-  const prompt = `You are a world-class academic writer, linguistics professor, and expert in human writing characteristics.
-Your task is to completely rewrite the provided text so that it reads with absolute naturalness, high human burstiness, and complex perplexity, making it entirely indistinguishable from human-authored text while maintaining 100% of the technical parameters and scientific accuracy.
+  // Use ninja level stealth, academic style, and formal tone
+  const prompt = getSystemPrompt(
+    'ninja', 
+    'academic', 
+    'academic-formal', 
+    undefined, 
+    undefined, 
+    undefined, 
+    'essay'
+  ) + `\n\nTEXT TO REWRITE:\n"""\n${params.content.slice(0, 3000)}\n"""`;
 
-CRITICAL INSTRUCTIONS FOR AI-DETECTION & PLAGIARISM BYPASS:
-1. HIGH BURSTINESS (Vary Sentence Structures):
-- Human writing features extreme variations in sentence length. Mix very short sentences (5-10 words) with medium (15-20 words) and complex, compound sentences (30+ words). 
-- Avoid the uniform sentence lengths typical of AI generators.
+  try {
+    // 1. Fetch full AI generated rewrite (non-streaming)
+    const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
+      body: JSON.stringify({
+        model: "meta/llama-3.1-70b-instruct", // Upgraded to 70B for much higher accuracy and instruction adherence
+        messages: [{ role: "user", content: prompt }],
+        stream: false,
+        temperature: 0.95, // Slightly higher temperature for more human-like randomness
+        max_tokens: 2048,
+      }),
+    });
 
-2. HIGH PERPLEXITY (Sophisticated & Natural Vocabulary):
-- Avoid predictable AI transition words entirely (e.g., remove: "Furthermore", "Moreover", "In conclusion", "Additionally", "Consequently", "Importantly", "It is crucial to note that", "It is worth mentioning").
-- Use varied, less-predictable phrasing. Instead of "Furthermore, the results show...", use "Building upon these findings, the data indicates..." or "Beyond this, the records reveal..." or simply begin the clause directly.
-- Use precise scientific terms but describe them using diverse syntactic pathways.
+    if (!resp.ok) {
+      if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
+      opts.onError("Generation failed");
+      return;
+    }
 
-3. STRUCTURE & SYNTAX DIVERSITY:
-- Restructure the clause arrangements. Switch passive and active structures dynamically (e.g., change "The tensile strength was measured to be 51.4 MPa" to "Measurements indicated a tensile strength of 51.4 MPa" or "Our evaluation recorded 51.4 MPa of tensile strength").
-- Avoid repeating the same structural templates (e.g., "Subject + Verb + Object" repeatedly).
-
-4. ZERO-PLAGIARISM REWRITING:
-- Completely alter the exact sequence of phrases (n-grams) to eliminate duplicate matching sequences.
-- Retain all technical variables, numbers, citations (e.g., [1], [2]), and data points exactly as they are.
-
-Text to Humanize:
-"""
-${params.content.slice(0, 3000)}
-"""
-
-Output ONLY the fully humanized, natural, high-perplexity academic text. Do not include any introductory remarks, explanations, or meta-commentary.`;
-
-  await nvidiaStream(prompt, opts, 2048);
+    const data = await resp.json();
+    const rawAiText = data.choices?.[0]?.message?.content || "";
+    
+    // 2. Run it through the deterministic anti-detection engine
+    const processedText = postprocess(rawAiText, { style: 'academic', aggressiveSynonyms: true });
+    
+    // 3. Output the result instantly to maximize speed
+    // We send it all at once to remove the artificial delay, drastically speeding up processing
+    opts.onDelta(processedText);
+    opts.onDone();
+  } catch (err) {
+    opts.onError(err instanceof Error ? err.message : "Generation failed");
+  }
 }
 
 export async function enhanceUserData(
@@ -470,14 +491,9 @@ export async function checkPlagiarism(
   const totalWords = params.sections.reduce((a, s) => a + (s.content?.trim().split(/\s+/).length || 0), 0);
 
   // Run ZeroGPT + NLP analysis in parallel
-  const [zeroGPTResults, nlpResult] = await Promise.all([
-    // ZeroGPT: check each section individually for per-section AI scores
-    Promise.all(
-      contentSections.map(async (s) => {
-        const result = await detectWithZeroGPT(s.content!);
-        return { sectionLabel: s.label, result };
-      })
-    ),
+  const [zeroGPTOverallResult, nlpResult] = await Promise.all([
+    // ZeroGPT: check the entire document in one single fast call to avoid rate limits and network latency
+    detectWithZeroGPT(fullText),
     // NLP: run the NVIDIA-based analysis
     (async () => {
       try {
@@ -512,30 +528,23 @@ ${fullText}
 
 Return ONLY valid JSON in this exact format:
 {"success":true,"originality_score":0-100,"ai_detection_score":0-100,"overall_risk":"low"|"medium"|"high","total_sources_matched":number,"sections":[{"name":"section name","originality":0-100,"ai_likelihood":0-100,"flags":["specific issue found"],"suggestions":["specific actionable fix"],"matches":[{"phrase":"exact flagged phrase","url":"","title":"potential source or pattern name","source":"detection method","snippet":"context","similarity":0-100}]}],"common_phrases":["list of cliché/template phrases found"],"recommendations":["specific actionable recommendations"]}`;
-        return await nvidiaJSON(prompt, 1024) as PlagiarismResult;
+        // Upgraded to 70B model for extreme accuracy in plagiarism/AI detection
+        return await nvidiaJSON(prompt, 1024, "meta/llama-3.1-70b-instruct") as PlagiarismResult;
       } catch {
         return null;
       }
     })()
   ]);
 
-  // Build ZeroGPT lookup map
-  const zeroGPTMap = new Map<string, ZeroGPTResponse>();
   let zeroGPTOverallAI = -1;
-  let zeroGPTTotalAiWords = 0;
-  let zeroGPTTotalWords = 0;
   const zeroGPTSentences: string[] = [];
 
-  for (const { sectionLabel, result } of zeroGPTResults) {
-    if (result?.success && result.data) {
-      zeroGPTMap.set(sectionLabel, result);
-      zeroGPTTotalAiWords += result.data.aiWords;
-      zeroGPTTotalWords += result.data.textWords;
-      if (result.data.h) zeroGPTSentences.push(...result.data.h);
+  if (zeroGPTOverallResult?.success && zeroGPTOverallResult.data) {
+    const data = zeroGPTOverallResult.data;
+    if (data.textWords > 0) {
+      zeroGPTOverallAI = Math.round((data.aiWords / data.textWords) * 100);
     }
-  }
-  if (zeroGPTTotalWords > 0) {
-    zeroGPTOverallAI = Math.round((zeroGPTTotalAiWords / zeroGPTTotalWords) * 100);
+    if (data.h) zeroGPTSentences.push(...data.h);
   }
 
   // ── Real-Time Local NLP Evaluation Layer ──
@@ -567,16 +576,14 @@ Return ONLY valid JSON in this exact format:
     let totalAICount = 0;
 
     const mergedSections = nlpResult.sections.map(sec => {
-      const zg = zeroGPTMap.get(sec.name);
       const local = localAnalysis.find(l => l.name === sec.name);
       
       let aiLikelihood = sec.ai_likelihood;
       let originality = sec.originality;
       let matches = sec.matches || [];
 
-      if (zg?.data) {
-        aiLikelihood = Math.round(zg.data.fakePercentage);
-      }
+      // Since we upgraded to the 70B model, the aiLikelihood returned from the NLP engine is highly accurate.
+      // We no longer need to overwrite it with per-section ZeroGPT scores, saving significant time.
 
       // Apply dynamic corrections based on real-time local evaluation
       if (local) {
@@ -648,17 +655,12 @@ Return ONLY valid JSON in this exact format:
       overall_risk: zeroGPTOverallAI > 60 ? "high" : zeroGPTOverallAI > 30 ? "medium" : "low",
       total_sources_matched: 0,
       sections: contentSections.map(s => {
-        const zg = zeroGPTMap.get(s.label);
-        const zgAI = zg?.data ? Math.round(zg.data.fakePercentage) : 0;
         return {
           name: s.label,
-          originality: Math.max(0, 100 - zgAI),
-          ai_likelihood: zgAI,
-          flags: zg?.data ? [
-            `ZeroGPT: ${zgAI}% AI-generated (${zg.data.aiWords}/${zg.data.textWords} words)`,
-            ...(zg.data.h?.length > 0 ? [`${zg.data.h.length} sentence(s) flagged as AI-written`] : [])
-          ] : [],
-          suggestions: zgAI > 50
+          originality: Math.max(0, 100 - zeroGPTOverallAI),
+          ai_likelihood: zeroGPTOverallAI,
+          flags: [],
+          suggestions: zeroGPTOverallAI > 50
             ? ["Rewrite this section with more varied sentence structure and original phrasing."]
             : ["Content appears human-written."],
           matches: []

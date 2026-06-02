@@ -2,16 +2,17 @@ import React, { useRef } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
 import { stripMarkdown } from "@/lib/ai";
 
-export type AuthorDetails = {
-  authorNames: string[];
+export type Author = {
+  name: string;
   department: string;
   institution: string;
   city: string;
   country?: string;
   email: string;
-  // legacy compat
-  authorName?: string;
-  coAuthorName?: string;
+};
+
+export type AuthorDetails = {
+  authors: Author[];
 };
 
 type FormatConfig = {
@@ -72,12 +73,26 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
   const bodySections = sections.filter((s) => !NON_BODY.includes(s.id) && (s.content.trim() || s.diagram || (s.diagrams && s.diagrams.length > 0)));
   const refSection = sections.find((s) => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id));
 
-  const names = authorDetails?.authorNames?.filter(n => n.trim()) || [];
-  const dept = authorDetails?.department || "";
-  const inst = authorDetails?.institution || "";
-  const city = authorDetails?.city || "";
-  const email = authorDetails?.email || "";
-  const hasAuthor = names.length > 0;
+  const authors = authorDetails?.authors?.filter(a => a.name.trim()) || [];
+  const hasAuthor = authors.length > 0;
+
+  const uniqueAffiliations: { dept: string, inst: string, city: string }[] = [];
+  const authorAffiliationIndices: number[] = [];
+  
+  authors.forEach(a => {
+    const affiliationStr = `${a.department}|${a.institution}|${a.city}`;
+    if (!a.department && !a.institution && !a.city) {
+      authorAffiliationIndices.push(-1);
+      return;
+    }
+    
+    let index = uniqueAffiliations.findIndex(u => `${u.dept}|${u.inst}|${u.city}` === affiliationStr);
+    if (index === -1) {
+      uniqueAffiliations.push({ dept: a.department, inst: a.institution, city: a.city });
+      index = uniqueAffiliations.length - 1;
+    }
+    authorAffiliationIndices.push(index);
+  });
 
   const isTwoCol = config.columns === 2;
   const marginPx = isTwoCol ? 48 : 72;
@@ -324,21 +339,37 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
         return;
       }
 
-      // Regular paragraph — strip markdown and render
-      const cleanP = stripMarkdown(block).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-      if (cleanP) {
-        elements.push(
-          <p key={`p-${i}`} style={{
-            fontFamily: "'Times New Roman', Times, serif",
-            fontSize: config.bodySize,
-            lineHeight: config.lineSpacing,
-            textAlign: "justify" as const,
-            margin: 0,
-            marginBottom: 3,
-            textIndent: i > 0 ? 14 : 0,
-          }}>{cleanP}</p>
-        );
-      }
+      // Regular paragraph — check for formulas, strip markdown and render
+      const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+      parts.forEach((part, pIdx) => {
+        if (!part) return;
+        if (part.startsWith("$$") || part.startsWith("\\[")) {
+          const code = part.startsWith("$$") ? part.slice(2, -2) : part.slice(2, -2);
+          if (code.trim()) {
+            const url = `https://latex.codecogs.com/png.image?\\bg_white\\space ${encodeURIComponent(code.trim())}`;
+            elements.push(
+              <div key={`formula-${i}-${pIdx}`} style={{ textAlign: "center", margin: "14px 0", breakInside: "avoid-column" }}>
+                <img src={url} alt="Math Formula" style={{ maxWidth: "100%", height: "auto" }} />
+              </div>
+            );
+          }
+        } else {
+          const cleanP = stripMarkdown(part).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+          if (cleanP) {
+            elements.push(
+              <p key={`p-${i}-${pIdx}`} style={{
+                fontFamily: "'Times New Roman', Times, serif",
+                fontSize: config.bodySize,
+                lineHeight: config.lineSpacing,
+                textAlign: "justify" as const,
+                margin: 0,
+                marginBottom: 3,
+                textIndent: (i > 0 && pIdx === 0) ? 14 : 0,
+              }}>{cleanP}</p>
+            );
+          }
+        }
+      });
     });
     return elements;
   };
@@ -443,21 +474,35 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
               margin: 0,
               fontStyle: "italic" as const,
             }}>
-              {names.join(", ")}
+              {authors.map((a, i) => {
+                const affilIndex = authorAffiliationIndices[i];
+                const marker = uniqueAffiliations.length > 1 && affilIndex !== -1 ? (affilIndex + 1).toString() : 
+                               (uniqueAffiliations.length === 1 && affilIndex !== -1 ? "1" : "");
+                return (
+                  <span key={i}>
+                    {a.name}
+                    {marker && <sup>{marker}</sup>}
+                    {i < authors.length - 1 ? ", " : ""}
+                  </span>
+                );
+              })}
             </p>
-            {(dept || inst || city) && (
-              <p style={{
-                fontFamily: "'Times New Roman', Times, serif",
-                fontSize: 8.5,
-                color: "#333",
-                margin: 0,
-                marginTop: 1,
-                fontStyle: "italic" as const,
-              }}>
-                {[dept, inst, city].filter(Boolean).join(", ")}
-              </p>
-            )}
-            {email && (
+            {uniqueAffiliations.map((affil, i) => {
+              const marker = uniqueAffiliations.length > 1 ? (i + 1).toString() : "1";
+              return (
+                <p key={i} style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: 8.5,
+                  color: "#333",
+                  margin: 0,
+                  marginTop: 1,
+                  fontStyle: "italic" as const,
+                }}>
+                  <sup>{marker}</sup>{[affil.dept, affil.inst, affil.city].filter(Boolean).join(", ")}
+                </p>
+              );
+            })}
+            {authors.some(a => a.email) && (
               <p style={{
                 fontFamily: "'Courier New', Courier, monospace",
                 fontSize: 8,
@@ -465,7 +510,7 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
                 margin: 0,
                 marginTop: 1,
               }}>
-                {email}
+                {authors.filter(a => a.email).map(a => a.email).join(", ")}
               </p>
             )}
           </div>
