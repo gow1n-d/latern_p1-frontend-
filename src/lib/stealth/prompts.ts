@@ -157,7 +157,7 @@ CRITICAL RULES — Follow these EXACTLY:
    - No "plays a [adjective] role" constructions
 
 7. PRESERVATION OF TECHNICAL CONTENT & PLAIN TEXT CONVERSION (CRITICAL):
-   - You MUST convert any existing mathematical formulas (e.g. $...$ or $$...$$), equations, or tabular columns into clear, descriptive plain text. Do NOT output raw LaTeX or Markdown tables.
+   - You MUST convert any existing mathematical formulas (e.g. $...$ or $$...$$), equations, or tabular columns into clear, descriptive plain text. Do NOT output raw LaTeX, Markdown tables, or pseudo-table structures (e.g. strings containing sequence patterns like "{---|---]" or "[---|---]").
    - You MUST retain all domain-specific terminology, specific numbers, metrics, and citations. Do not rephrase specialized scientific or technical terms.
    - ZERO TOLERANCE for spelling mistakes, grammatical errors, or broken formatting. Maintain perfect alignment and structure while making the prose sound human.
 

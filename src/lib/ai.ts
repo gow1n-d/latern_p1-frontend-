@@ -55,6 +55,8 @@ export function stripMarkdown(text: string): string {
   s = s.replace(/`([^`]+)`/g, "$1");
   // Remove horizontal rules (but NOT table separator lines like |---|---|)
   s = s.replace(/^[-*_]{3,}$/gm, "");
+  // Remove malformed pseudo-table separators such as {---|---] or [---|---] or lonely |---|---|
+  s = s.replace(/^[\{\[\(\|]?\s*[-|]{3,}\s*[\}\]\)]?$/gm, "");
   // Clean up excessive blank lines
   s = s.replace(/\n{3,}/g, "\n\n");
 
@@ -102,6 +104,38 @@ export function isFormulaHeavyDomain(domain: string): boolean {
 
 function getAcademicSystemPrompt(domain?: string): string {
   const formulaHeavy = isFormulaHeavyDomain(domain || '');
+  const lowerDomain = (domain || '').toLowerCase();
+  
+  const isLiteratureOrHumanities = lowerDomain.includes('literature') || 
+                                   lowerDomain.includes('humanities') || 
+                                   lowerDomain.includes('art') || 
+                                   lowerDomain.includes('history') || 
+                                   lowerDomain.includes('philosophy') || 
+                                   lowerDomain.includes('social') || 
+                                   lowerDomain.includes('english') ||
+                                   lowerDomain.includes('political') ||
+                                   lowerDomain.includes('sociology');
+
+  if (isLiteratureOrHumanities) {
+    return `You are an elite, peer-reviewed journal editor and expert academic writer in the field of ${domain || 'Humanities/Literature'}.
+Strictly adhere to the following linguistic style, narrative structure, and citation format:
+
+1. STRUCTURE & HEADINGS:
+- Structure major sections logically, utilizing clear paragraph breaks and narrative flow.
+- Do NOT use capitalized Roman Numerals (e.g., I. INTRODUCTION) or capitalized alphabet prefixes for subsections. Use clean, plain text headings on a new line (e.g., Introduction, Literature Review, Methodology, Analysis, Conclusion).
+- Bullet lists or numbered points should be used sparingly, prioritizing well-flowing prose.
+
+2. TONE & VOCABULARY:
+- Write in an analytical, eloquent, and highly scholarly register.
+- Maintain a formal, academic voice, utilizing rich vocabulary suitable for critical analysis, theoretical discussion, and qualitative reasoning.
+- Absolutely avoid rigid engineering jargon, technical STEM acronyms (unless highly specific to the text), or formulas.
+- Integrate citations seamlessly in the text using standard humanities conventions (e.g., in-text citations or footnotes as appropriate).
+
+3. NO FORMULAS OR TABLES:
+- Explain concepts, thematic developments, and textual analysis purely in narrative form.
+- Do NOT output any LaTeX mathematical formulas ($ or $$) or Markdown tables. Do NOT use horizontal rules, pseudo-table structures, or markdown table separators.
+- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'Introduction' on a new line).`;
+  }
 
   const dataSection = formulaHeavy
     ? `3. SCIENTIFIC VARIABLES, DATA TABLES & MATHEMATICAL FORMULAS:
@@ -617,10 +651,14 @@ Return ONLY valid JSON in this exact format:
 
   // Merge results: prefer ZeroGPT for AI scores, NLP for plagiarism/originality
   if (nlpResult) {
-    let totalOriginality = 0;
-    let totalAICount = 0;
+    let totalOriginalityWeighted = 0;
+    let totalAICountWeighted = 0;
+    let totalWordsCounted = 0;
 
     const mergedSections = nlpResult.sections.map(sec => {
+      const correspondingSection = params.sections.find(s => s.label === sec.name);
+      const wordCount = correspondingSection?.content?.trim().split(/\s+/).length || 0;
+      
       const local = localAnalysis.find(l => l.name === sec.name);
       
       let aiLikelihood = sec.ai_likelihood;
@@ -651,8 +689,15 @@ Return ONLY valid JSON in this exact format:
         }
       }
 
-      totalOriginality += originality;
-      totalAICount += aiLikelihood;
+      // Bound originality score with highest matched source similarity
+      if (matches.length > 0) {
+        const maxSim = Math.max(...matches.map(m => m.similarity));
+        originality = Math.min(originality, 100 - maxSim);
+      }
+
+      totalOriginalityWeighted += originality * wordCount;
+      totalAICountWeighted += aiLikelihood * wordCount;
+      totalWordsCounted += wordCount;
 
       return {
         ...sec,
@@ -671,8 +716,8 @@ Return ONLY valid JSON in this exact format:
       };
     });
 
-    const finalOriginality = Math.round(totalOriginality / (mergedSections.length || 1));
-    const finalAIScore = Math.round(totalAICount / (mergedSections.length || 1));
+    const finalOriginality = totalWordsCounted > 0 ? Math.round(totalOriginalityWeighted / totalWordsCounted) : 100;
+    const finalAIScore = totalWordsCounted > 0 ? Math.round(totalAICountWeighted / totalWordsCounted) : 0;
 
     const finalRisk = (finalOriginality < 60 || finalAIScore > 60) ? "high"
       : (finalOriginality >= 80 && finalAIScore < 30) ? "low"
