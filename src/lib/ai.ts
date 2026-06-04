@@ -70,7 +70,55 @@ export function stripMarkdown(text: string): string {
   return s.trim();
 }
 
-const ACADEMIC_SYSTEM_PROMPT = `You are an elite, peer-reviewed journal editor and expert academic writer following the rigorous IEEE standards.
+// ── Domain-aware formula detection ──
+const FORMULA_HEAVY_KEYWORDS = [
+  // Core STEM
+  'mathematics', 'statistics', 'physics', 'chemistry', 'biochemistry',
+  // Engineering
+  'electrical engineering', 'electronics', 'mechanical engineering', 'civil engineering',
+  'aerospace', 'chemical engineering', 'control systems', 'signal processing',
+  'power systems', 'vlsi', 'embedded systems', 'robotics', 'mechatronics',
+  // CS / AI
+  'machine learning', 'deep learning', 'artificial intelligence', 'neural network',
+  'computer vision', 'nlp', 'natural language processing', 'data science',
+  'data mining', 'pattern recognition', 'reinforcement learning', 'optimization',
+  'algorithms', 'computational', 'cryptography', 'information theory',
+  // Applied sciences
+  'bioinformatics', 'computational biology', 'operations research',
+  'econometrics', 'quantitative finance', 'actuarial',
+  // Physics sub-fields
+  'quantum', 'thermodynamics', 'fluid dynamics', 'optics', 'electromagnetics',
+  'semiconductor', 'nanotechnology', 'materials science',
+  // Battery / EV / IoT (user's product domain)
+  'battery', 'ev', 'electric vehicle', 'iot', 'sensor', 'monitoring system',
+  'predictive maintenance', 'state of charge', 'soc', 'soh', 'bms',
+];
+
+export function isFormulaHeavyDomain(domain: string): boolean {
+  if (!domain) return false;
+  const lower = domain.toLowerCase();
+  return FORMULA_HEAVY_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+function getAcademicSystemPrompt(domain?: string): string {
+  const formulaHeavy = isFormulaHeavyDomain(domain || '');
+
+  const dataSection = formulaHeavy
+    ? `3. SCIENTIFIC VARIABLES, DATA TABLES & MATHEMATICAL FORMULAS:
+- Reference physical parameters and variables using standard scientific naming conventions (e.g., P for power, v for speed, h for hatch spacing, R²).
+- MATHEMATICAL EQUATIONS: Whenever you discuss algorithms, theorems, or complex math, you MUST include the exact mathematical formula formatted as a block LaTeX equation (e.g.,
+$$
+ P(A|B) = \\frac{P(B|A)P(A)}{P(B)}
+$$
+).
+- Whenever you present quantitative data, comparative analysis, or results, you MUST format it as a tabular column using standard Markdown tables (with | and -).
+- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Markdown tables and LaTeX blocks ($$) are the ONLY markdown you are allowed to use.`
+    : `3. SCIENTIFIC VARIABLES & DATA PRESENTATION:
+- Reference physical parameters and variables using standard scientific naming conventions (e.g., P for power, v for speed, h for hatch spacing, R²).
+- Explain mathematical concepts, algorithms, and data clearly in plain text format rather than using LaTeX formulas or Markdown tables.
+- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Do NOT use LaTeX blocks ($$) or Markdown tables.`;
+
+  return `You are an elite, peer-reviewed journal editor and expert academic writer following the rigorous IEEE standards.
 Strictly adhere to the following linguistic style, fonts, and structure:
 
 1. STRUCTURE & HEADINGS:
@@ -84,24 +132,17 @@ Strictly adhere to the following linguistic style, fonts, and structure:
 - Use precise verbs (e.g., "confirming the adequacy", "underscoring the importance", "attributed to").
 - Integrate citations in bracketed format (e.g., [1], [2]) seamlessly into your literature discussions.
 
-3. SCIENTIFIC VARIABLES, FONTS, DATA TABLES & MATHEMATICAL FORMULAS:
-- Reference physical parameters and variables using standard scientific naming conventions (e.g., P for power, v for speed, h for hatch spacing, R²).
-- MATHEMATICAL EQUATIONS: Whenever you discuss algorithms, theorems (e.g. Naive Bayes), or complex math, you MUST include the exact mathematical formula formatted as a block LaTeX equation (e.g., 
-$$
- P(A|B) = \\frac{P(B|A)P(A)}{P(B)} 
-$$
-).
-- Whenever you present quantitative data, comparative analysis, or results, you MUST format it as a tabular column using standard Markdown tables (with | and -).
-- Do NOT use text formatting markdown like bold (**), italics (*), or hash headings (###). Use plain, structured headers instead (e.g., 'I. INTRODUCTION' on a new line). Markdown tables and LaTeX blocks ($$) are the ONLY markdown you are allowed to use.`;
+${dataSection}`;
+}
 
-async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 2048) {
+async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 2048, systemPrompt?: string) {
   try {
     const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
       body: JSON.stringify({
         model: NVIDIA_MODEL,
-        messages: [{ role: "system", content: ACADEMIC_SYSTEM_PROMPT }, { role: "user", content: prompt }],
+        messages: [{ role: "system", content: systemPrompt || getAcademicSystemPrompt() }, { role: "user", content: prompt }],
         stream: true,
         temperature: 0.7,
         max_tokens: maxTokens,
@@ -174,7 +215,7 @@ export async function generateSection(
 Journal: ${params.journal}. Methodology: ${params.methodology}. Results: ${params.results_summary}.${ctx}
 Write formal academic content only. No introductory filler. Use proper headings.`;
 
-  await nvidiaStream(prompt, opts, 2048);
+  await nvidiaStream(prompt, opts, 2048, getAcademicSystemPrompt(params.domain));
 }
 
 export async function aiAssist(
@@ -319,10 +360,12 @@ Note:
 }
 
 export async function humanizeText(
-  params: { content: string; journal: string },
+  params: { content: string; journal: string; domain?: string },
   opts: StreamOptions
 ) {
   // Use ninja level stealth, academic style, and formal tone
+  // Pass domain so formula-heavy papers preserve their equations
+  const formulaHeavy = isFormulaHeavyDomain(params.domain || '');
   const prompt = getSystemPrompt(
     'ninja', 
     'academic', 
@@ -330,7 +373,8 @@ export async function humanizeText(
     undefined, 
     undefined, 
     undefined, 
-    'essay'
+    'essay',
+    formulaHeavy
   ) + `\n\nTEXT TO REWRITE:\n"""\n${params.content.slice(0, 3000)}\n"""`;
 
   try {

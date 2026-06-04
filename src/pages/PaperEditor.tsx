@@ -1090,7 +1090,7 @@ export default function PaperEditor() {
       await Promise.all(sectionsToHumanize.map(async (sec) => {
         let accumulated = "";
         await humanizeText(
-          { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
+          { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE", domain: paperMeta.domain },
           {
             onDelta: (text) => {
               accumulated += text;
@@ -1306,7 +1306,7 @@ export default function PaperEditor() {
         
         let accumulated = "";
         await humanizeText(
-          { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE" },
+          { content: sec.content, journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE", domain: paperMeta.domain },
           {
             onDelta: (text) => {
               accumulated += text;

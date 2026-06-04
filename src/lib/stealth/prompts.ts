@@ -156,9 +156,9 @@ CRITICAL RULES — Follow these EXACTLY:
    - No balanced sentence pairs: "not only X but also Y"
    - No "plays a [adjective] role" constructions
 
-7. PRESERVATION OF TECHNICAL CONTENT (CRITICAL):
-   - You MUST PRESERVE all mathematical formulas (e.g. $...$ or $$...$$), equations, theorems, algorithms, tabular columns, and Markdown syntax exactly as they appear. NEVER remove or corrupt them.
-   - You MUST retain all domain-specific terminology, specific numbers, metrics, and citations. Do not rephrase specialized scientific, mathematical, or technical terms.
+7. PRESERVATION OF TECHNICAL CONTENT & PLAIN TEXT CONVERSION (CRITICAL):
+   - You MUST convert any existing mathematical formulas (e.g. $...$ or $$...$$), equations, or tabular columns into clear, descriptive plain text. Do NOT output raw LaTeX or Markdown tables.
+   - You MUST retain all domain-specific terminology, specific numbers, metrics, and citations. Do not rephrase specialized scientific or technical terms.
    - ZERO TOLERANCE for spelling mistakes, grammatical errors, or broken formatting. Maintain perfect alignment and structure while making the prose sound human.
 
 OUTPUT: Return ONLY the rewritten text. No explanations.`;
@@ -293,7 +293,8 @@ export function getSystemPrompt(
   customTone?: string,
   writingSample?: string,
   language?: string,
-  purpose?: TextPurpose
+  purpose?: TextPurpose,
+  formulaHeavy?: boolean
 ): string {
   // Use Chinese-specific prompts for Chinese languages
   if (language === 'zh-CN' || language === 'zh-TW') {
@@ -314,11 +315,19 @@ Personality: ${toneConfig.personalityTraits.join(', ')}`
     ? `\n\n${PURPOSE_CONFIGS[purpose].promptOverlay}`
     : '';
 
+  const formulaOverlay = formulaHeavy
+    ? `\n\nCRITICAL FORMULA OVERRIDE — OVERRIDES RULE 7 ABOVE:
+- You MUST PRESERVE all mathematical formulas (e.g. $...$ or $$...$$), equations, theorems, algorithms, and Markdown tables EXACTLY as they appear. NEVER remove, reword, or corrupt them.
+- Only rewrite the PROSE around them. The formulas and tables are untouchable.
+- If a sentence contains an inline formula like $x^2 + y^2 = r^2$, keep the formula intact and only rephrase the surrounding words.
+- This is a STEM paper — formulas are essential content, not decoration.`
+    : '';
+
   return `${PERSONAS[level]}
 
 ${ANTI_DETECTION_CORE}
 
-${STYLE_OVERLAYS[style]}${purposeSection}
+${STYLE_OVERLAYS[style]}${purposeSection}${formulaOverlay}
 ${toneSection}
 ${sampleSection}
 

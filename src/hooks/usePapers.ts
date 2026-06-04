@@ -668,7 +668,14 @@ function parseSections(raw: Json): PaperSection[] {
   return DEFAULT_SECTIONS;
 }
 
-const MOCK_USER_ID = "00000000-0000-0000-0000-000000000000";
+const MOCK_USER_IDS = [
+  "00000000-0000-0000-0000-000000000000", // admin@paperforge.com
+  "11111111-1111-1111-1111-111111111111", // studentadmin@paperforge.com
+];
+
+function isMockUser(userId: string | undefined): boolean {
+  return !!userId && MOCK_USER_IDS.includes(userId);
+}
 
 function getMockPapers(): Paper[] {
   const data = localStorage.getItem("pf_mock_papers");
@@ -689,7 +696,7 @@ export function usePapers() {
   return useQuery({
     queryKey: ["papers", user?.id],
     queryFn: async () => {
-      if (user?.id === MOCK_USER_ID) {
+      if (isMockUser(user?.id)) {
         return getMockPapers();
       }
       const { data, error } = await supabase
@@ -709,7 +716,7 @@ export function usePaper(id: string | undefined) {
     queryKey: ["paper", id],
     queryFn: async () => {
       if (!id || id === "new") return null;
-      if (user?.id === MOCK_USER_ID) {
+      if (isMockUser(user?.id)) {
         const mock = getMockPapers().find(p => p.id === id);
         return mock || null;
       }
@@ -731,10 +738,10 @@ export function useCreatePaper() {
         s.id === "title" ? { ...s, content: params.title } : s
       );
       
-      if (user?.id === MOCK_USER_ID) {
+      if (isMockUser(user?.id)) {
         const newPaper: Paper = {
           id: Math.random().toString(36).substring(2, 15),
-          user_id: MOCK_USER_ID,
+          user_id: user!.id,
           title: params.title,
           journal: params.journal,
           domain: params.domain || "",
@@ -777,7 +784,7 @@ export function useUpdatePaper() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: { id: string; updates: Partial<Pick<Paper, "title" | "journal" | "status" | "domain" | "methodology_summary" | "results_summary" | "sections">> }) => {
-      if (user?.id === MOCK_USER_ID) {
+      if (isMockUser(user?.id)) {
         const papers = getMockPapers();
         const idx = papers.findIndex(p => p.id === params.id);
         if (idx !== -1) {
@@ -819,7 +826,7 @@ export function useDeletePaper() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      if (user?.id === MOCK_USER_ID) {
+      if (isMockUser(user?.id)) {
         const papers = getMockPapers();
         const filtered = papers.filter(p => p.id !== id);
         saveMockPapers(filtered);
