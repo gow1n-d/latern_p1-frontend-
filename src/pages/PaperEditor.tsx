@@ -237,7 +237,7 @@ export default function PaperEditor() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastCursorPos = useRef<number | null>(null);
   const fileUploadRef = useRef<HTMLInputElement>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Modal states
   const [showValidation, setShowValidation] = useState(false);
@@ -333,7 +333,9 @@ export default function PaperEditor() {
 
   // Chat auto-scroll
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, [chatHistory, isAssisting]);
 
   // Word count
@@ -2179,7 +2181,7 @@ export default function PaperEditor() {
                     </div>
                     <div className="p-4 space-y-4">
                       {chatHistory.length > 0 && (
-                        <div className="max-h-60 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
+                        <div ref={chatContainerRef} className="max-h-60 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
                           {chatHistory.map((chat, idx) => {
                             const isAi = chat.sender === "ai";
                             return (
@@ -2210,7 +2212,6 @@ export default function PaperEditor() {
                               <span>Agent alter-editing section...</span>
                             </motion.div>
                           )}
-                          <div ref={chatEndRef} />
                         </div>
                       )}
                       
