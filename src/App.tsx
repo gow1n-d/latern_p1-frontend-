@@ -14,6 +14,7 @@ import PaperEditor from "./pages/PaperEditor";
 import ProfilePage from "./pages/ProfilePage";
 import PricingPage from "./pages/PricingPage";
 import ReportEditor from "./pages/ReportEditor";
+import LiteratureReviewPage from "./pages/LiteratureReviewPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/editor/:id" element={<ProtectedRoute><PaperEditor /></ProtectedRoute>} />
             <Route path="/report/:id" element={<ProtectedRoute><ReportEditor /></ProtectedRoute>} />
+            <Route path="/literature-review" element={<ProtectedRoute><LiteratureReviewPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

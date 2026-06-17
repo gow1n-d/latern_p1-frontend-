@@ -399,7 +399,10 @@ export default function PaperEditor() {
   }, [autoSave]);
 
   const handleRemoveSection = useCallback((idToRemove: string) => {
-    if (!idToRemove.startsWith("custom-section-")) return;
+    if (idToRemove === "title") {
+      toast.error("The title section is required and cannot be removed.");
+      return;
+    }
     setSections((prev) => {
       const updated = prev.filter(s => s.id !== idToRemove);
       autoSave(updated);
@@ -669,6 +672,7 @@ export default function PaperEditor() {
               .filter((s) => s.content.trim() && s.id !== sec.id)
               .map((s) => `${s.label}: ${s.content.slice(0, 500)}`)
               .join("\n"),
+
           },
           {
             onDelta: (text) => {
@@ -699,121 +703,138 @@ export default function PaperEditor() {
 
   // ── File upload handler with client-side Canvas Optimization ──
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     // Reset input so re-uploading same file triggers change
     e.target.value = "";
 
     const titleContent = sections.find(s => s.id === "title")?.content || "";
     const journalName = journalOptions.find(j => j.id === selectedJournal)?.name || "IEEE";
 
-    // Handle image files → compress and optimize locally before embedding
-    if (file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const dataUrl = ev.target?.result as string;
-        if (!dataUrl) { toast.error("Failed to read image."); return; }
+    const imageFiles = files.filter(f => f.type.startsWith("image/"));
+    const textFiles = files.filter(f => !f.type.startsWith("image/"));
 
-        toast.info("Optimizing and compressing image...");
-        try {
-          const optimizedDataUrl = await optimizeImage(dataUrl, 1000, 0.75);
-          const caption = `Imported: ${file.name}`;
-          const newDiag: SectionDiagram = {
-            id: Math.random().toString(36).substring(2, 9),
-            type: "image",
-            imageData: optimizedDataUrl,
-            caption,
-            width: "100%"
-          };
+    // Process Image Files
+    for (const file of imageFiles) {
+      await new Promise<void>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const dataUrl = ev.target?.result as string;
+          if (!dataUrl) { toast.error(`Failed to read image ${file.name}.`); resolve(); return; }
 
-          setSectionDiagrams(prev => {
-            const currentList = prev[activeSection] || [];
-            const updatedList = [...currentList, newDiag];
-            return { ...prev, [activeSection]: updatedList };
-          });
+          toast.info(`Optimizing and compressing image ${file.name}...`);
+          try {
+            const optimizedDataUrl = await optimizeImage(dataUrl, 1000, 0.75);
+            const caption = `Imported: ${file.name}`;
+            const newDiag: SectionDiagram = {
+              id: Math.random().toString(36).substring(2, 9),
+              type: "image",
+              imageData: optimizedDataUrl,
+              caption,
+              width: "100%"
+            };
 
-          setSections(prevSecs => {
-            const updatedSecs = prevSecs.map(s => {
-              if (s.id === activeSection) {
-                const currentList = s.diagrams || [];
-                const updatedList = [...currentList, newDiag];
-                const textarea = textareaRef.current;
-                let newContent = s.content;
-                const cursorPos = lastCursorPos.current ?? textarea?.selectionStart;
-                if (cursorPos !== undefined && cursorPos !== null) {
-                  newContent = s.content.substring(0, cursorPos) + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n` + s.content.substring(cursorPos);
-                } else {
-                  newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
-                }
-                return { 
-                  ...s, 
-                  content: newContent,
-                  diagram: updatedList[0],
-                  diagrams: updatedList
-                };
-              }
-              return s;
+            setSectionDiagrams(prev => {
+              const currentList = prev[activeSection] || [];
+              const updatedList = [...currentList, newDiag];
+              return { ...prev, [activeSection]: updatedList };
             });
-            autoSave(updatedSecs);
-            return updatedSecs;
-          });
 
-          toast.success(`Image "${file.name}" optimized and added to ${currentSection?.label}!`);
-        } catch (err) {
-          toast.error("Failed to optimize image");
+            setSections(prevSecs => {
+              const updatedSecs = prevSecs.map(s => {
+                if (s.id === activeSection) {
+                  const currentList = s.diagrams || [];
+                  const updatedList = [...currentList, newDiag];
+                  const textarea = textareaRef.current;
+                  let newContent = s.content;
+                  const cursorPos = lastCursorPos.current ?? textarea?.selectionStart;
+                  if (cursorPos !== undefined && cursorPos !== null) {
+                    newContent = s.content.substring(0, cursorPos) + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n` + s.content.substring(cursorPos);
+                  } else {
+                    newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
+                  }
+                  return { 
+                    ...s, 
+                    content: newContent,
+                    diagram: updatedList[0],
+                    diagrams: updatedList
+                  };
+                }
+                return s;
+              });
+              autoSave(updatedSecs);
+              return updatedSecs;
+            });
+
+            toast.success(`Image "${file.name}" optimized and added to ${currentSection?.label || "section"}!`);
+          } catch (err) {
+            toast.error(`Failed to optimize image ${file.name}`);
+          }
+          resolve();
+        };
+        reader.onerror = () => { toast.error(`Failed to read image file ${file.name}.`); resolve(); };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Process Text Files
+    if (textFiles.length > 0) {
+      const textTypes = [
+        "text/plain", "text/csv", "text/tab-separated-values",
+        "application/json", "text/markdown", "text/html",
+        "application/xml", "text/xml"
+      ];
+      
+      let combinedText = "";
+      let validTextFilesCount = 0;
+
+      for (const file of textFiles) {
+        const isText = textTypes.includes(file.type) ||
+          file.name.match(/\.(txt|csv|tsv|json|md|log|dat|xml|yaml|yml|ini|cfg|conf|tex|bib|py|r|m|sql)$/i);
+
+        if (!isText) {
+          toast.error(`Unsupported file type: ${file.name}`);
+          continue;
         }
-      };
-      reader.onerror = () => toast.error("Failed to read image file.");
-      reader.readAsDataURL(file);
-      return;
-    }
 
-    // Handle text/data files → AI enhances the content
-    const textTypes = [
-      "text/plain", "text/csv", "text/tab-separated-values",
-      "application/json", "text/markdown", "text/html",
-      "application/xml", "text/xml"
-    ];
-    const isText = textTypes.includes(file.type) ||
-      file.name.match(/\.(txt|csv|tsv|json|md|log|dat|xml|yaml|yml|ini|cfg|conf|tex|bib|py|r|m|sql)$/i);
-
-    if (!isText) {
-      toast.error("Unsupported file type. Upload an image or a text/data file (.txt, .csv, .json, .md, .log, etc.).");
-      return;
-    }
-
-    // Read text content
-    const text = await file.text();
-    if (!text.trim()) { toast.error("File is empty."); return; }
-
-    toast.info(`Enhancing data from "${file.name}"...`);
-    setIsAssisting(true);
-    let accumulated = "";
-
-    await enhanceUserData(
-      {
-        rawData: text,
-        section: currentSection?.label || activeSection,
-        journal: journalName,
-        title: titleContent,
-      },
-      {
-        onDelta: (chunk) => {
-          accumulated += chunk;
-          const current = stripMarkdown(accumulated);
-          setSections(prev => prev.map(s => s.id === activeSection ? { ...s, content: current } : s));
-        },
-        onDone: () => {
-          setIsAssisting(false);
-          toast.success(`Data from "${file.name}" enhanced and added!`);
-          setSections(prev => { autoSave(prev); return prev; });
-        },
-        onError: (err) => {
-          setIsAssisting(false);
-          toast.error(err);
-        },
+        const text = await file.text();
+        if (text.trim()) {
+          combinedText += `\n\n--- File: ${file.name} ---\n${text}`;
+          validTextFilesCount++;
+        }
       }
-    );
+
+      if (validTextFilesCount > 0 && combinedText.trim()) {
+        toast.info(`Enhancing data from ${validTextFilesCount} file(s)...`);
+        setIsAssisting(true);
+        let accumulated = "";
+
+        await enhanceUserData(
+          {
+            rawData: combinedText,
+            section: currentSection?.label || activeSection,
+            journal: journalName,
+            title: titleContent,
+          },
+          {
+            onDelta: (chunk) => {
+              accumulated += chunk;
+              const current = stripMarkdown(accumulated);
+              setSections(prev => prev.map(s => s.id === activeSection ? { ...s, content: current } : s));
+            },
+            onDone: () => {
+              setIsAssisting(false);
+              toast.success(`Data from ${validTextFilesCount} file(s) enhanced and added!`);
+              setSections(prev => { autoSave(prev); return prev; });
+            },
+            onError: (err) => {
+              setIsAssisting(false);
+              toast.error(err);
+            },
+          }
+        );
+      }
+    }
   }, [activeSection, currentSection, sections, selectedJournal, autoSave, optimizeImage]);
 
   // Sizing change handler
@@ -1721,12 +1742,12 @@ export default function PaperEditor() {
                 onClick={() => setActiveSection(s.id)}
                 className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left transition-colors mb-0.5 ${
                   activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                } ${s.id.startsWith("custom-section-") ? "pr-8" : ""}`}
+                } ${s.id !== "title" ? "pr-8" : ""}`}
               >
                 {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
                 <span className="truncate">{s.label}</span>
               </button>
-              {s.id.startsWith("custom-section-") && (
+              {s.id !== "title" && (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleRemoveSection(s.id); }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2047,13 +2068,14 @@ export default function PaperEditor() {
                             className="flex-1 rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
                           >
                             <Upload className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
-                            <p className="text-sm font-medium text-foreground">Upload Image File</p>
-                            <p className="text-xs text-muted-foreground mt-1">Supports drag-and-drop or browsing local files</p>
+                            <p className="text-sm font-medium text-foreground">Upload File(s)</p>
+                            <p className="text-xs text-muted-foreground mt-1">Supports images or data files (multiple allowed)</p>
                           </button>
                         </div>
                       ) : null}
                     </div>
                   )}
+
 
                   {/* Section-Specific AI Assistant */}
                   <div className="mt-8 border border-accent/20 rounded-xl overflow-hidden bg-accent/5 shadow-sm">
@@ -2233,7 +2255,7 @@ export default function PaperEditor() {
                       {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
                       <span className="truncate">{s.label}</span>
                     </button>
-                    {s.id.startsWith("custom-section-") && (
+                    {s.id !== "title" && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleRemoveSection(s.id); }}
                         className="p-2 text-muted-foreground hover:text-destructive"
@@ -2763,10 +2785,12 @@ export default function PaperEditor() {
       <input
         ref={fileUploadRef}
         type="file"
+        multiple
         className="hidden"
         accept="image/*,.txt,.csv,.tsv,.json,.md,.log,.dat,.xml,.yaml,.yml,.tex,.bib,.py,.r,.m,.sql"
         onChange={handleFileUpload}
       />
+
     </div>
   );
 }

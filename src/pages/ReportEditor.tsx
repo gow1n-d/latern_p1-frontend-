@@ -234,7 +234,10 @@ export default function ReportEditor() {
   }, [autoSave]);
 
   const handleRemoveSection = useCallback((idToRemove: string) => {
-    if (!idToRemove.startsWith("custom-section-")) return;
+    if (idToRemove === "title") {
+      toast.error("The title section is required and cannot be removed.");
+      return;
+    }
     setSections((prev) => {
       const updated = prev.filter((s) => s.id !== idToRemove);
       autoSave(updated);
@@ -655,14 +658,7 @@ export default function ReportEditor() {
             <p className="text-sm text-muted-foreground mb-3">
               Upload data files, notes, or references that AI should use for context (.txt, .csv, .json, .md, etc.)
             </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".txt,.csv,.json,.md,.log,.py,.js,.ts,.html,.xml,.yaml,.yml,.tsv,.dat"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
+
             <Button variant="outline" size="sm" className="gap-2 mb-3" onClick={() => fileInputRef.current?.click()}>
               <FileUp className="h-4 w-4" /> Choose Files
             </Button>
@@ -802,7 +798,7 @@ export default function ReportEditor() {
                 <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${sec.content.trim() ? "bg-emerald-500" : "bg-border"}`} />
                 <span className="truncate">{sec.label}</span>
               </button>
-              {sec.id.startsWith("custom-section-") && (
+              {sec.id !== "title" && (
                 <button
                   onClick={() => handleRemoveSection(sec.id)}
                   className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
@@ -979,6 +975,44 @@ export default function ReportEditor() {
                       placeholder={`Start writing your ${currentSection?.label || "section"} content here...`}
                       disabled={isBusy}
                     />
+
+                    {/* File Upload Section for AI Context */}
+                    <div className="mt-8 border border-accent/20 rounded-xl overflow-hidden bg-accent/5 shadow-sm">
+                      <div className="bg-accent/10 px-4 py-2 border-b border-accent/20 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-accent" />
+                          <span className="font-semibold text-sm text-accent-foreground">Reference Files</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">Used for AI Context</span>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {reportMeta.uploadedFileNames.length > 0 ? (
+                          <div className="space-y-2 mb-4">
+                            {reportMeta.uploadedFileNames.map((name, i) => (
+                              <div key={i} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm">
+                                <FileText className="h-4 w-4 text-accent shrink-0" />
+                                <span className="flex-1 truncate text-foreground">{name}</span>
+                                <button onClick={() => removeUploadedFile(i)} className="text-muted-foreground hover:text-destructive">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-muted-foreground/60">
+                            <FileUp className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No reference files attached.</p>
+                          </div>
+                        )}
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-accent/30 bg-card hover:bg-accent/5 py-3 text-sm font-medium text-foreground transition-colors group"
+                        >
+                          <Upload className="h-4 w-4 text-accent/60 group-hover:text-accent" />
+                          Upload More Files
+                        </button>
+                      </div>
+                    </div>
                   </>
                 ) : (
                   /* Preview mode */
@@ -1055,18 +1089,28 @@ export default function ReportEditor() {
               </div>
               <nav className="flex-1 overflow-y-auto py-2 px-2">
                 {sections.map((sec) => (
-                  <button
-                    key={sec.id}
-                    onClick={() => { setActiveSection(sec.id); setShowMobileSections(false); }}
-                    className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-all text-left ${
-                      activeSection === sec.id
-                        ? "bg-accent/15 text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${sec.content.trim() ? "bg-emerald-500" : "bg-border"}`} />
-                    <span className="truncate">{sec.label}</span>
-                  </button>
+                  <div key={sec.id} className="relative group flex items-center mb-0.5">
+                    <button
+                      onClick={() => { setActiveSection(sec.id); setShowMobileSections(false); }}
+                      className={`flex-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-all text-left ${
+                        activeSection === sec.id
+                          ? "bg-accent/15 text-foreground font-medium"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${sec.content.trim() ? "bg-emerald-500" : "bg-border"}`} />
+                      <span className="truncate">{sec.label}</span>
+                    </button>
+                    {sec.id !== "title" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveSection(sec.id); }}
+                        className="p-2 text-muted-foreground hover:text-destructive"
+                        title="Remove Section"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </nav>
               <div className="border-t border-border p-3">
@@ -1082,6 +1126,14 @@ export default function ReportEditor() {
           </>
         )}
       </AnimatePresence>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".txt,.csv,.json,.md,.log,.py,.js,.ts,.html,.xml,.yaml,.yml,.tsv,.dat"
+        className="hidden"
+        onChange={handleFileUpload}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen, Plus, Clock, MoreVertical, Search, Sparkles,
-  Trash2, Loader2, LogOut, User, Settings, Crown, FileText
+  Trash2, Loader2, LogOut, User, Settings, Crown, FileText, Library
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -171,6 +171,9 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex w-full sm:w-auto gap-3">
+            <Button variant="outline" onClick={() => navigate("/literature-review")} className="gap-2 flex-1 sm:flex-none">
+              <Library className="h-4 w-4" /> Literature Review
+            </Button>
             <Button variant="outline" onClick={() => navigate("/report/new")} className="gap-2 flex-1 sm:flex-none">
               <FileText className="h-4 w-4" /> New Report
             </Button>

@@ -241,12 +241,21 @@ export async function generateSection(
     section: string; title: string; domain: string;
     methodology: string; results_summary: string;
     journal: string; existing_content?: string;
+    reference_papers?: { name: string; content: string }[];
   },
   opts: StreamOptions
 ) {
   const ctx = params.existing_content ? `\nContext from other sections: ${params.existing_content.slice(0, 600)}` : "";
+  let refsCtx = "";
+  if (params.reference_papers && params.reference_papers.length > 0) {
+    refsCtx = `\n\n## Uploaded Reference Papers for Literature Review:\nThe user has uploaded the following reference papers. You MUST extract key information, methodologies, or findings from these sources to write the "${params.section}" section.\n\n`;
+    params.reference_papers.forEach((p, i) => {
+      refsCtx += `--- Source ${i + 1}: ${p.name} ---\n${p.content.slice(0, 8000)}\n\n`;
+    });
+  }
+
   const prompt = `Write the "${params.section}" section for paper: "${params.title}" (${params.domain}).
-Journal: ${params.journal}. Methodology: ${params.methodology}. Results: ${params.results_summary}.${ctx}
+Journal: ${params.journal}. Methodology: ${params.methodology}. Results: ${params.results_summary}.${ctx}${refsCtx}
 Write formal academic content only. No introductory filler. Use proper headings.`;
 
   await nvidiaStream(prompt, opts, 2048, getAcademicSystemPrompt(params.domain));
