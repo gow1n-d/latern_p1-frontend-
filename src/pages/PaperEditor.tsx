@@ -5,12 +5,13 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload, Plus, Trash2
+  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload, Plus, Trash2, FileUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
-import { generateSection, aiAssist, agenticAiAssist, humanizeText, enhanceUserData, stripMarkdown, validateFormat, checkPlagiarism, searchScholar, generateDiagram, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
+import { generateSection, aiAssist, agenticAiAssist, humanizeText, enhanceUserData, stripMarkdown, validateFormat, checkPlagiarism, searchScholar, generateDiagram, distributeAssets, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
+import { parseDocx, parseMultipleImages } from "@/lib/documentParser";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, type SectionDiagram, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
@@ -1119,6 +1120,8 @@ export default function PaperEditor() {
   };
 
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isSmartImporting, setIsSmartImporting] = useState(false);
+  const smartImportRef = useRef<HTMLInputElement>(null);
 
   const handleExportLaTeX = () => {
     const cleanSections = sections.map(s => ({ ...s, content: stripMarkdown(s.content) }));
@@ -1407,6 +1410,84 @@ export default function PaperEditor() {
     setIsFixingValidation(false);
     setSections((prev) => { autoSave(prev); return prev; });
   }, [validationResult, sections, selectedJournal, autoSave, paperMeta]);
+
+  const handleSmartImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setIsSmartImporting(true);
+    toast.info("Parsing document and extracting assets...");
+    
+    try {
+      let parsed;
+      const fileArray = Array.from(files);
+      
+      if (fileArray.length === 1 && fileArray[0].name.endsWith(".docx")) {
+        parsed = await parseDocx(fileArray[0]);
+      } else {
+        parsed = await parseMultipleImages(fileArray);
+      }
+
+      if (parsed.assets.length === 0) {
+        toast.error("No images found in the uploaded file(s).");
+        setIsSmartImporting(false);
+        return;
+      }
+
+      toast.info(`Found ${parsed.assets.length} assets. AI is distributing them to sections...`);
+      const sectionMap = await distributeAssets(parsed.assets, sections.map(s => ({ id: s.id, label: s.label })));
+      
+      setSections(prev => {
+        const updated = [...prev];
+        const newDiagramsBySection: Record<string, SectionDiagram[]> = {};
+
+        parsed.assets.forEach(asset => {
+          let targetSectionId = sectionMap[asset.id];
+          let secIndex = updated.findIndex(s => s.id === targetSectionId);
+          if (secIndex === -1) {
+            secIndex = 0;
+            targetSectionId = updated[0].id;
+          }
+            
+          const newDiag: SectionDiagram = {
+            id: asset.id,
+            type: "image",
+            code: "",
+            imageData: asset.content,
+            caption: asset.originalName || "Imported Asset",
+            width: "100%"
+          };
+          
+          updated[secIndex].diagrams = [...(updated[secIndex].diagrams || []), newDiag];
+          updated[secIndex].content += `\n\n![${newDiag.caption}](${newDiag.id})\n\n`;
+
+          if (!newDiagramsBySection[targetSectionId]) newDiagramsBySection[targetSectionId] = [];
+          newDiagramsBySection[targetSectionId].push(newDiag);
+        });
+        
+        setSectionDiagrams(prevDiags => {
+          const next = { ...prevDiags };
+          for (const [secId, diags] of Object.entries(newDiagramsBySection)) {
+            next[secId] = [...(next[secId] || []), ...diags];
+          }
+          return next;
+        });
+
+        autoSave(updated);
+        return updated;
+      });
+      
+      toast.success("Assets successfully distributed to sections!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to parse and distribute document.");
+    } finally {
+      setIsSmartImporting(false);
+      if (smartImportRef.current) smartImportRef.current.value = "";
+    }
+  };
+
+
 
   // AI Fix for plagiarism issues
   const handleAiFixPlagiarism = useCallback(async () => {
@@ -1706,7 +1787,7 @@ export default function PaperEditor() {
   }
 
   const canGenerate = !NON_GENERATABLE.includes(activeSection);
-  const isBusy = isGenerating || isAssisting || isCompletingAll || isHumanizing || isGeneratingDiagram;
+  const isBusy = isGenerating || isAssisting || isCompletingAll || isHumanizing || isGeneratingDiagram || isSmartImporting;
 
   return (
     <div className="flex flex-col md:flex-row h-screen h-[100dvh] bg-background overflow-hidden">
@@ -1775,6 +1856,16 @@ export default function PaperEditor() {
           </Button>
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowAuthorModal(true)}>
             <User className="h-4 w-4" /> Author Details
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full gap-2 justify-start border-accent/30 text-accent hover:bg-accent/10" 
+            onClick={() => smartImportRef.current?.click()}
+            disabled={isSmartImporting}
+          >
+            {isSmartImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />} 
+            Smart Import
           </Button>
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-muted-foreground">Theme</span>
@@ -2782,6 +2873,15 @@ export default function PaperEditor() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <input 
+        ref={smartImportRef} 
+        type="file" 
+        accept=".docx,image/*" 
+        multiple
+        className="hidden" 
+        onChange={handleSmartImport} 
+      />
       <input
         ref={fileUploadRef}
         type="file"

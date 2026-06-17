@@ -17,6 +17,8 @@ import {
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { exportReportToPDF, exportReportToWord } from "@/lib/exportReport";
 import MermaidBlock from "@/components/MermaidBlock";
+import { parseDocx, parseMultipleImages } from "@/lib/documentParser";
+import { distributeAssets } from "@/lib/ai";
 
 // ── AI generation for report sections ──
 const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
@@ -165,10 +167,12 @@ export default function ReportEditor() {
   const [showMobileSections, setShowMobileSections] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSmartImporting, setIsSmartImporting] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const smartImportRef = useRef<HTMLInputElement>(null);
 
   // Load existing report
   useEffect(() => {
@@ -232,6 +236,46 @@ export default function ReportEditor() {
     setActiveSection(newId);
     toast.success("New section added");
   }, [autoSave]);
+
+  const handleSmartImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsSmartImporting(true);
+    toast.info("Parsing document and extracting assets...");
+    try {
+      let parsed;
+      const fileArray = Array.from(files);
+      if (fileArray.length === 1 && fileArray[0].name.endsWith(".docx")) {
+        parsed = await parseDocx(fileArray[0]);
+      } else {
+        parsed = await parseMultipleImages(fileArray);
+      }
+      if (parsed.assets.length === 0) {
+        toast.error("No images found in the uploaded file(s).");
+        setIsSmartImporting(false);
+        return;
+      }
+      toast.info(`Found ${parsed.assets.length} assets. AI is distributing them...`);
+      const sectionMap = await distributeAssets(parsed.assets, sections.map(s => ({ id: s.id, label: s.label })));
+      setSections(prev => {
+        const updated = [...prev];
+        parsed.assets.forEach(asset => {
+          const targetSectionId = sectionMap[asset.id];
+          const secIndex = updated.findIndex(s => s.id === targetSectionId) !== -1 
+            ? updated.findIndex(s => s.id === targetSectionId) : 0;
+          updated[secIndex].content += `\n\n![${asset.originalName || "Imported Asset"}](${asset.content})\n\n`;
+        });
+        autoSave(updated);
+        return updated;
+      });
+      toast.success("Assets distributed!");
+    } catch (err) {
+      toast.error("Failed to parse document.");
+    } finally {
+      setIsSmartImporting(false);
+      if (smartImportRef.current) smartImportRef.current.value = "";
+    }
+  };
 
   const handleRemoveSection = useCallback((idToRemove: string) => {
     if (idToRemove === "title") {
@@ -814,6 +858,14 @@ export default function ReportEditor() {
           >
             <Plus className="h-3.5 w-3.5" /> Add Section
           </button>
+          <button
+            onClick={() => smartImportRef.current?.click()}
+            disabled={isSmartImporting}
+            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-accent hover:bg-accent/10 transition-colors mt-1 font-medium disabled:opacity-50"
+          >
+            {isSmartImporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileUp className="h-3.5 w-3.5" />}
+            Smart Import
+          </button>
         </nav>
 
         {/* Sidebar footer stats */}
@@ -1133,6 +1185,14 @@ export default function ReportEditor() {
         accept=".txt,.csv,.json,.md,.log,.py,.js,.ts,.html,.xml,.yaml,.yml,.tsv,.dat"
         className="hidden"
         onChange={handleFileUpload}
+      />
+      <input 
+        ref={smartImportRef} 
+        type="file" 
+        accept=".docx,image/*" 
+        multiple
+        className="hidden" 
+        onChange={handleSmartImport} 
       />
     </div>
   );

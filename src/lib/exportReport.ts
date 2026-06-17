@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun, Table, TableRow, TableCell, BorderStyle, WidthType } from "docx";
 import type { ReportSection } from "@/hooks/useReports";
-import { ensurePng } from "./export";
+import { ensurePng, imageUrlToPng } from "./export";
 
 function extractMermaidFromContent(content: string): string | null {
   const match = content.match(/```mermaid\s*([\s\S]*?)```/i);
@@ -76,6 +76,31 @@ export async function exportReportToPDF(sections: ReportSection[], templateName:
         console.error("Failed to render mermaid for PDF report:", e);
       }
     }
+  }
+
+  const sectionFormulaPngs: Record<string, string[]> = {};
+  for (const s of sections) {
+    if (!s.content.trim()) continue;
+    const formulas: string[] = [];
+    const blocks = s.content.split(/\n\s*\n/).filter(Boolean);
+    for (const block of blocks) {
+      const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+      for (const part of parts) {
+        if (part.startsWith("$$") || part.startsWith("\\[")) {
+          const code = part.startsWith("$$") ? part.slice(2, -2) : part.slice(2, -2);
+          if (code && code.trim()) {
+            try {
+              const url = `https://latex.codecogs.com/png.image?\\dpi{300}\\bg_white\\space ${encodeURIComponent(code.trim())}`;
+              const png = await imageUrlToPng(url);
+              formulas.push(png);
+            } catch (e) {
+              formulas.push("");
+            }
+          }
+        }
+      }
+    }
+    if (formulas.length > 0) sectionFormulaPngs[s.id] = formulas;
   }
 
   // Title page
@@ -167,13 +192,38 @@ export async function exportReportToPDF(sections: ReportSection[], templateName:
       }
 
       // Regular text
-      const clean = para.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-      if (!clean) continue;
-      const lines = doc.splitTextToSize(clean, contentW);
-      for (const line of lines) {
-        checkSpace(lh);
-        doc.text(line, margin, y);
-        y += lh;
+      const parts = para.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+      for (const part of parts) {
+        if (!part) continue;
+        if (part.startsWith("$$") || part.startsWith("\\[")) {
+          const imgData = sectionFormulaPngs[sec.id]?.shift();
+          if (imgData) {
+            checkSpace(60);
+            try {
+              const props = doc.getImageProperties(imgData);
+              const explicitWidthPx = Math.min(600, Math.round(props.width * 0.32));
+              const explicitHeightPx = Math.round(explicitWidthPx * (props.height / props.width));
+              
+              const imgW = explicitWidthPx * 0.264583;
+              const imgH = explicitHeightPx * 0.264583;
+              
+              const dx = (pw - imgW) / 2;
+              doc.addImage(imgData, "PNG", dx, y, imgW, imgH);
+              y += imgH + lh;
+            } catch (e) {
+              console.error("Failed to add formula to PDF:", e);
+            }
+          }
+        } else {
+          const clean = part.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+          if (!clean) continue;
+          const lines = doc.splitTextToSize(clean, contentW);
+          for (const line of lines) {
+            checkSpace(lh);
+            doc.text(line, margin, y);
+            y += lh;
+          }
+        }
       }
       y += lh * 0.5;
     }
@@ -219,6 +269,31 @@ export async function exportReportToWord(sections: ReportSection[], templateName
   }));
 
   children.push(new Paragraph({ children: [], spacing: { after: 200 } }));
+
+  const sectionFormulaPngsWord: Record<string, string[]> = {};
+  for (const s of sections) {
+    if (!s.content.trim()) continue;
+    const formulas: string[] = [];
+    const blocks = s.content.split(/\n\s*\n/).filter(Boolean);
+    for (const block of blocks) {
+      const parts = block.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+      for (const part of parts) {
+        if (part.startsWith("$$") || part.startsWith("\\[")) {
+          const code = part.startsWith("$$") ? part.slice(2, -2) : part.slice(2, -2);
+          if (code && code.trim()) {
+            try {
+              const url = `https://latex.codecogs.com/png.image?\\dpi{300}\\bg_white\\space ${encodeURIComponent(code.trim())}`;
+              const png = await imageUrlToPng(url);
+              formulas.push(png);
+            } catch (e) {
+              formulas.push("");
+            }
+          }
+        }
+      }
+    }
+    if (formulas.length > 0) sectionFormulaPngsWord[s.id] = formulas;
+  }
 
   for (const sec of sections) {
     if (sec.id === "title") continue;
@@ -294,13 +369,41 @@ export async function exportReportToWord(sections: ReportSection[], templateName
         continue;
       }
 
-      const clean = para.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-      if (!clean) continue;
-      children.push(new Paragraph({
-        children: [new TextRun({ text: clean, size: 22, font: "Times New Roman" })],
-        spacing: { after: 160 },
-        alignment: AlignmentType.JUSTIFIED,
-      }));
+      const parts = para.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g);
+      parts.forEach((part, pIdx) => {
+        if (!part) return;
+        if (part.startsWith("$$") || part.startsWith("\\[")) {
+          const imgData = sectionFormulaPngsWord[sec.id]?.shift();
+          if (imgData) {
+            try {
+              const explicitWidthPx = 400; // default
+              const h = 100;
+              const base64Data = imgData.split(",")[1];
+              children.push(new Paragraph({
+                children: [
+                  new ImageRun({
+                    data: Uint8Array.from(atob(base64Data), c => c.charCodeAt(0)),
+                    transformation: { width: explicitWidthPx, height: h },
+                    type: "png"
+                  })
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 200, after: 200 }
+              }));
+            } catch (e) {
+              console.error("Failed to add formula to word:", e);
+            }
+          }
+        } else {
+          const clean = part.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+          if (!clean) return;
+          children.push(new Paragraph({
+            children: [new TextRun({ text: clean, size: 22, font: "Times New Roman" })],
+            spacing: { after: 160 },
+            alignment: AlignmentType.JUSTIFIED,
+          }));
+        }
+      });
     }
   }
 

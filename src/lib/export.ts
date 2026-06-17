@@ -350,7 +350,7 @@ function svgToPng(svgString: string): Promise<string> {
   });
 }
 
-function imageUrlToPng(url: string): Promise<string> {
+export function imageUrlToPng(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error("Image load timed out after 800ms"));

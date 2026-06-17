@@ -4,6 +4,7 @@ const NVIDIA_MODEL = "meta/llama-3.1-8b-instruct";
 
 import { getSystemPrompt } from './stealth/prompts';
 import { postprocess } from './stealth/postprocess';
+import type { ExtractedAsset } from './documentParser';
 
 type StreamOptions = {
   onDelta: (text: string) => void;
@@ -234,6 +235,31 @@ async function nvidiaJSON(prompt: string, maxTokens = 1024, modelOverride?: stri
   return cleanAndParseJSON(data.choices?.[0]?.message?.content || "{}");
 }
 
+export async function distributeAssets(
+  assets: ExtractedAsset[],
+  sections: { id: string, label: string }[]
+): Promise<Record<string, string>> {
+  const prompt = `You are an expert editor assigning extracted assets (images, tables) to the correct sections of a document.
+Available sections:
+${sections.map(s => `- ${s.id}: ${s.label}`).join('\n')}
+
+Assets to assign:
+${assets.map(a => `[Asset ID: ${a.id}]\nType: ${a.type}\nContext Before: ${a.contextBefore.slice(-300)}\nOriginal Name: ${a.originalName || "N/A"}\n`).join('\n')}
+
+Based on the context of each asset, determine the most appropriate section ID for it.
+Respond with a JSON object mapping asset IDs to section IDs. Example:
+{
+  "${assets[0]?.id || "asset1"}": "${sections[0]?.id || "section1"}"
+}`;
+
+  try {
+    const json = await nvidiaJSON(prompt, 2048);
+    return json as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
 // ── Streaming functions ──
 
 export async function generateSection(
@@ -254,9 +280,14 @@ export async function generateSection(
     });
   }
 
+  const refInstruction = params.section.toLowerCase().includes("reference") || params.section.toLowerCase().includes("bibliography") 
+    ? "This is the References section. Provide a fully formatted list of citations."
+    : "Do NOT append a bibliography or list of references at the end of your response. Use bracketed in-text citations like [1] only. The actual reference list belongs in a separate section.";
+
   const prompt = `Write the "${params.section}" section for paper: "${params.title}" (${params.domain}).
 Journal: ${params.journal}. Methodology: ${params.methodology}. Results: ${params.results_summary}.${ctx}${refsCtx}
-Write formal academic content only. No introductory filler. Use proper headings.`;
+Write formal academic content only. No introductory filler. Use proper headings.
+${refInstruction}`;
 
   await nvidiaStream(prompt, opts, 2048, getAcademicSystemPrompt(params.domain));
 }
@@ -273,9 +304,10 @@ Text to improve:
 ${params.content.slice(0, 3000)}
 """
 
-Apply the instruction. Output only the improved text.`;
+Rewrite or improve the text based on the instruction. Output ONLY the improved text. Do not add conversational filler.
+CRITICAL INSTRUCTION: Do NOT append a bibliography or list of references at the end of your response unless the text being improved is a References section. Use bracketed in-text citations like [1] only.`;
 
-  await nvidiaStream(prompt, opts, 2048);
+  await nvidiaStream(prompt, opts, 2048, "You are an expert academic editor.");
 }
 
 export type AgenticAction =
@@ -388,6 +420,7 @@ Note:
 - DO NOT rewrite or alter ANY section unless the user's instruction specifically requires it.
 - If the user asks for a specific change (e.g., "add this sentence", "fix grammar"), only apply that change and PRESERVE all existing content, equations, tables, and structures exactly.
 - For UPDATE_SECTION_CONTENT, strictly follow the user's instruction while maintaining high-quality, professional, IEEE-grade academic content.
+- CRITICAL INSTRUCTION: Do NOT append a bibliography or list of references at the end of the section UNLESS the active section is explicitly named 'References' or 'Bibliography'. Just use bracketed in-text citations like [1].
 - Respond with a valid JSON object ONLY. No markdown wrappers or explanation outside the JSON.`;
 
   try {
