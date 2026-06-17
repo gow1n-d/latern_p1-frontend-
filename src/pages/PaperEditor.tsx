@@ -5,7 +5,7 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload
+  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload, Plus, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -232,6 +232,7 @@ export default function PaperEditor() {
   const [wordCount, setWordCount] = useState(0);
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastCursorPos = useRef<number | null>(null);
   const fileUploadRef = useRef<HTMLInputElement>(null);
@@ -381,6 +382,43 @@ export default function PaperEditor() {
     });
   }, [activeSection, autoSave]);
 
+  const handleAddSection = useCallback(() => {
+    const id = `custom-section-${Date.now()}`;
+    const newSection: PaperSection = {
+      id,
+      label: "New Section",
+      content: "",
+    };
+    setSections((prev) => {
+      const updated = [...prev, newSection];
+      autoSave(updated);
+      return updated;
+    });
+    setActiveSection(id);
+    toast.success("New section added. You can rename it by clicking its title.");
+  }, [autoSave]);
+
+  const handleRemoveSection = useCallback((idToRemove: string) => {
+    if (!idToRemove.startsWith("custom-section-")) return;
+    setSections((prev) => {
+      const updated = prev.filter(s => s.id !== idToRemove);
+      autoSave(updated);
+      return updated;
+    });
+    if (activeSection === idToRemove) {
+      setActiveSection(sections[0]?.id || "title");
+    }
+    toast.success("Section removed");
+  }, [activeSection, sections, autoSave]);
+
+  const handleRenameSection = useCallback((idToRename: string, newLabel: string) => {
+    setSections((prev) => {
+      const updated = prev.map(s => s.id === idToRename ? { ...s, label: newLabel } : s);
+      autoSave(updated);
+      return updated;
+    });
+  }, [autoSave]);
+
   const applyFormatting = useCallback((formatType: "bold" | "italic" | "underline" | "align" | "list" | "quote" | "code") => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -483,6 +521,73 @@ export default function PaperEditor() {
     setIsSaving(false);
   };
 
+  const handleGenerateDiagram = useCallback(async () => {
+    const titleContent = sections.find((s) => s.id === "title")?.content || "";
+    if (!titleContent.trim()) { toast.error("Please add a paper title first"); return; }
+    
+    setIsGeneratingDiagram(true);
+    toast.info("Generating diagram...");
+    try {
+      const result = await generateDiagram({
+        title: titleContent,
+        domain: paperMeta.domain,
+        section: currentSection?.label || activeSection,
+        methodology: paperMeta.methodology,
+        results_summary: paperMeta.results_summary,
+        description: currentSection?.content || ""
+      });
+      if (result.success) {
+        let diagId = Math.random().toString(36).substring(2, 9);
+        const newDiag: SectionDiagram = {
+          id: diagId,
+          type: result.type,
+          code: result.code,
+          imageData: result.imageData,
+          caption: result.caption || "Generated Diagram",
+          width: "100%"
+        };
+        
+        setSectionDiagrams(prev => {
+          const currentList = prev[activeSection] || [];
+          return { ...prev, [activeSection]: [...currentList, newDiag] };
+        });
+
+        setSections(prevSecs => {
+          const updatedSecs = prevSecs.map(s => {
+            if (s.id === activeSection) {
+              const currentList = s.diagrams || [];
+              const updatedList = [...currentList, newDiag];
+              const textarea = textareaRef.current;
+              let newContent = s.content;
+              const cursorPos = lastCursorPos.current ?? textarea?.selectionStart;
+              if (cursorPos !== undefined && cursorPos !== null) {
+                newContent = s.content.substring(0, cursorPos) + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n` + s.content.substring(cursorPos);
+              } else {
+                newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
+              }
+              return { 
+                ...s, 
+                content: newContent,
+                diagram: updatedList[0],
+                diagrams: updatedList
+              };
+            }
+            return s;
+          });
+          autoSave(updatedSecs);
+          return updatedSecs;
+        });
+        toast.success("Diagram generated successfully!");
+      } else {
+        toast.error("Failed to generate diagram");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate diagram");
+    } finally {
+      setIsGeneratingDiagram(false);
+    }
+  }, [activeSection, sections, currentSection, paperMeta, autoSave]);
+
   const handleGenerateSection = useCallback(async () => {
     const titleContent = sections.find((s) => s.id === "title")?.content || "";
     if (!titleContent.trim()) { toast.error("Please add a paper title first"); return; }
@@ -494,7 +599,7 @@ export default function PaperEditor() {
 
     await generateSection(
       {
-        section: activeSection,
+        section: currentSection?.label || activeSection,
         title: titleContent,
         domain: paperMeta.domain,
         methodology: paperMeta.methodology,
@@ -554,7 +659,7 @@ export default function PaperEditor() {
       await new Promise<void>((resolve) => {
         generateSection(
           {
-            section: sec.id,
+            section: sec.label,
             title: titleContent,
             domain: paperMeta.domain,
             methodology: paperMeta.methodology,
@@ -1199,7 +1304,7 @@ export default function PaperEditor() {
         let accumulated = "";
         await generateSection(
           {
-            section: sec.id,
+            section: sec.label,
             title: titleContent,
             domain: paperMeta.domain,
             methodology: paperMeta.methodology,
@@ -1580,7 +1685,7 @@ export default function PaperEditor() {
   }
 
   const canGenerate = !NON_GENERATABLE.includes(activeSection);
-  const isBusy = isGenerating || isAssisting || isCompletingAll || isHumanizing;
+  const isBusy = isGenerating || isAssisting || isCompletingAll || isHumanizing || isGeneratingDiagram;
 
   return (
     <div className="flex flex-col md:flex-row h-screen h-[100dvh] bg-background overflow-hidden">
@@ -1611,17 +1716,30 @@ export default function PaperEditor() {
 
         <nav className="flex-1 overflow-y-auto px-2 py-2">
           {sections.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setActiveSection(s.id)}
-              className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left transition-colors mb-0.5 ${
-                activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
-              {s.label}
-            </button>
+            <div key={s.id} className="relative group">
+              <button
+                onClick={() => setActiveSection(s.id)}
+                className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left transition-colors mb-0.5 ${
+                  activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                } ${s.id.startsWith("custom-section-") ? "pr-8" : ""}`}
+              >
+                {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
+                <span className="truncate">{s.label}</span>
+              </button>
+              {s.id.startsWith("custom-section-") && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleRemoveSection(s.id); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Remove Section"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           ))}
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 mt-2 text-muted-foreground hover:text-foreground" onClick={handleAddSection}>
+            <Plus className="h-4 w-4" /> Add Section
+          </Button>
         </nav>
 
         <div className="border-t border-border p-3 space-y-2">
@@ -1751,6 +1869,12 @@ export default function PaperEditor() {
                 {isGenerating ? "Generating..." : "AI Generate"}
               </Button>
             )}
+            {activeSection === "methodology" && (
+              <Button variant="ghost" size="sm" className="gap-2 text-blue-500" onClick={handleGenerateDiagram} disabled={isBusy}>
+                {isGeneratingDiagram ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                {isGeneratingDiagram ? "Generating..." : "Generate Diagram"}
+              </Button>
+            )}
             <Button variant="ghost" size="sm" className="gap-2 text-emerald-600" onClick={handleHumanize} disabled={isBusy}>
               {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
               {isHumanizing ? "Humanizing..." : "Humanize"}
@@ -1780,7 +1904,14 @@ export default function PaperEditor() {
               <div className={`mx-auto py-6 px-4 sm:py-10 sm:px-8 ${viewMode === "split" ? "max-w-none" : "max-w-3xl"}`}>
                 <motion.div key={activeSection} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-display text-2xl font-bold text-foreground">{currentSection?.label}</h2>
+                    <input
+                      className="font-display text-2xl font-bold text-foreground bg-transparent border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors w-full mr-4"
+                      value={currentSection?.label || ""}
+                      onChange={(e) => {
+                        if (currentSection) handleRenameSection(currentSection.id, e.target.value);
+                      }}
+                      placeholder="Section Title"
+                    />
                     {isBusy && (
                       <span className="flex items-center gap-2 text-sm text-accent">
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -2092,17 +2223,30 @@ export default function PaperEditor() {
 
               <nav className="flex-1 overflow-y-auto px-2 py-2">
                 {sections.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => { setActiveSection(s.id); setShowMobileSections(false); }}
-                    className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-left transition-colors mb-0.5 ${
-                      activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
-                    {s.label}
-                  </button>
+                  <div key={s.id} className="relative group flex items-center">
+                    <button
+                      onClick={() => { setActiveSection(s.id); setShowMobileSections(false); }}
+                      className={`flex-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-left transition-colors mb-0.5 ${
+                        activeSection === s.id ? "bg-accent/10 text-accent-foreground font-medium" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {s.content.trim() ? <Check className="h-3.5 w-3.5 text-success shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />}
+                      <span className="truncate">{s.label}</span>
+                    </button>
+                    {s.id.startsWith("custom-section-") && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveSection(s.id); }}
+                        className="p-2 text-muted-foreground hover:text-destructive"
+                        title="Remove Section"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 ))}
+                <Button variant="ghost" size="sm" className="w-full justify-start gap-2 mt-2 text-muted-foreground hover:text-foreground" onClick={handleAddSection}>
+                  <Plus className="h-4 w-4" /> Add Section
+                </Button>
               </nav>
 
               <div className="border-t border-border p-3 space-y-2">

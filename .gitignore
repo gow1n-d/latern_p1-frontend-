@@ -28,3 +28,14 @@ dist-ssr
 
 # MCP config with API keys
 mcp.json
+
+# Temporary scripts and test files
+scratch/
+*.zip
+*.pdf
+*.docx
+*_extracted/
+*.cjs
+fix_export.js
+rewrite_export.js
+original_export.ts

@@ -381,7 +381,7 @@ function imageUrlToPng(url: string): Promise<string> {
   });
 }
 
-async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string }): Promise<string | null> {
+export async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string }): Promise<string | null> {
   const cacheKey = diagram.type === "mermaid" ? diagram.svg || "" : diagram.imageData || "";
   if (!cacheKey) return null;
 
