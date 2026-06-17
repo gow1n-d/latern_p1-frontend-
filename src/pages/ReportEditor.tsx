@@ -430,7 +430,7 @@ export default function ReportEditor() {
     setIsExporting(true);
     setShowExportMenu(false);
     try {
-      const blob = exportReportToPDF(sections, templateName);
+      const blob = await exportReportToPDF(sections, templateName);
       const safeName = (sections.find(s => s.id === "title")?.content || "Report").replace(/[^a-z0-9]/gi, "_").slice(0, 50);
       downloadBlob(blob, `${safeName}_Report.pdf`);
       toast.success("Report exported as PDF!");

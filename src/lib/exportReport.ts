@@ -246,6 +246,7 @@ export async function exportReportToWord(sections: ReportSection[], templateName
                   new ImageRun({
                     data: Uint8Array.from(atob(base64Data), c => c.charCodeAt(0)),
                     transformation: { width: 500, height: 350 },
+                    type: "png"
                   })
                 ],
                 alignment: AlignmentType.CENTER,
