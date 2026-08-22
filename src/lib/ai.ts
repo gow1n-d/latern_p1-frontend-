@@ -330,6 +330,7 @@ export async function agenticAiAssist(
     authorDetails: any;
     journal: string;
     activeSectionId?: string;
+    persona?: "supportive" | "reviewer2" | "caffeinated" | "monk";
   }
 ): Promise<AgenticResponse> {
   const sectionsSummary = params.sections
@@ -339,19 +340,28 @@ export async function agenticAiAssist(
         : s.diagram
           ? `- Diagram ID: "${s.diagram.id || ""}", Type: "${s.diagram.type}", Caption: "${s.diagram.caption || ""}", Width: "${s.diagram.width || "100%"}"`
           : "None";
-      return `ID: "${s.id}", Label: "${s.label}", Length: ${s.content?.length || 0} characters.\nContent: "${s.content?.slice(0, 800) || ""}"\nDiagrams:\n${diags}`;
+      return `Section ID: "${s.id}", Label: "${s.label}", Length: ${s.content?.length || 0} characters.\nContent: "${s.content?.slice(0, 1200) || ""}"\nDiagrams:\n${diags}`;
     })
     .join("\n\n");
 
-  const activeSectionLabel = params.sections.find(s => s.id === params.activeSectionId)?.label || params.activeSectionId || "None";
+  const activeSectionLabel = params.sections.find(s => s.id === params.activeSectionId)?.label || params.activeSectionId || "All / Global";
 
-  const prompt = `You are an elite Agentic AI Academic Assistant for PaperForge research editor.
+  const personaGuide = {
+    reviewer2: "You have the persona of REVIEWER #2: hilariously skeptical, delightfully witty, questioning weak claims with dry academic sarcasm, but secretly helping the author write an unassailable masterpiece.",
+    caffeinated: "You have the persona of a CAFFEINATED PhD RESEARCHER: high-energy, witty, running on cold-brew and LaTeX adrenaline, dropping relatable research jokes and hype while drafting blazing fast.",
+    monk: "You have the persona of a DEADPAN LATEX MONK: serene, dry, treating mathematical elegance, formatting purity, and precise typography as a sacred art.",
+    supportive: "You have the persona of a CHARISMATIC PROFESSOR: warm, funny, full of clever academic wisdom, PhD survival one-liners, and encouraging energy."
+  }[params.persona || "supportive"];
+
+  const prompt = `You are an elite Agentic AI Academic Assistant and Co-Author for PaperForge research editor.
 The user gave this instruction: "${params.instruction}".
 Journal Style: ${params.journal}
-Active Section in Editor: "${activeSectionLabel}" (ID: "${params.activeSectionId || ""}")
+Active Section in View: "${activeSectionLabel}" (ID: "${params.activeSectionId || "all"}")
+Personality Mode: ${personaGuide}
 
-You are operating in SECTION-SPECIFIC MODE. You are assisting the user in editing their active section.
-You have the capability to make changes to the ACTIVE SECTION ONLY by returning a list of structured actions.
+You are operating as the COMMON INTERACTIVE AI CO-AUTHOR for the entire research paper.
+You have the capability to analyze, answer questions, rewrite, optimize, generate, or modify ANY section of the paper or paper metadata as requested.
+
 Here is the current state of the paper:
 
 ### Paper Metadata:
@@ -360,23 +370,22 @@ Methodology Summary: "${params.paperMeta.methodology || ""}"
 Results Summary: "${params.paperMeta.results_summary || ""}"
 
 ### Author Details:
-Authors: ${JSON.stringify(params.authorDetails.authorNames || [])}
-Department: "${params.authorDetails.department || ""}"
-Institution: "${params.authorDetails.institution || ""}"
-City: "${params.authorDetails.city || ""}"
-Email: "${params.authorDetails.email || ""}"
+Authors: ${JSON.stringify(params.authorDetails?.authors || params.authorDetails?.authorNames || [])}
 
 ### Sections and Content:
 ${sectionsSummary}
 
 ## Your Task:
-Interpret the user's instruction specifically as it applies to the ACTIVE SECTION.
-- If the user is asking a question (e.g., "explain this", "summarize"), provide a thorough explanation in the "message" field and leave the "actions" array EMPTY.
-- If the user is asking to modify the text based on a query, analyze the content and generate the necessary actions to fulfill the request ONLY FOR THE ACTIVE SECTION.
+1. In the "message" field, communicate with genuine personality, wit, academic humor, and interactive flair matching your selected persona! Drop clever academic references (e.g. p-values, peer review survival, coffee dosages, LaTeX compilation triumphs, citations).
+2. If the user is asking for explanations, advice, or feedback, deliver thorough and entertaining guidance in "message" with "actions": [].
+3. If the user asks to write, edit, rewrite, expand, or improve sections:
+   - Deliver the actual revised text inside "actions" with "UPDATE_SECTION_CONTENT".
+   - CRITICAL: While your "message" can be humorous and lively, the actual "content" written into sections MUST be 100% professional, dense, rigorous, publication-grade scholarly prose suited for ${params.journal}.
+4. If the user asks to resize or delete diagrams, generate "RESIZE_DIAGRAM" or "REMOVE_DIAGRAM" actions.
 
 Always output a valid JSON object in this exact format:
 {
-  "message": "A polite explanation of what changes you have made to fulfill their instruction.",
+  "message": "A witty, helpful, and interactive response explaining what you did or answering the user.",
   "actions": [
     {
       "type": "UPDATE_SECTION_CONTENT",
@@ -393,7 +402,6 @@ Always output a valid JSON object in this exact format:
         "results_summary": "new results summary if requested"
       }
     },
-    {
     {
       "type": "RESIZE_DIAGRAM",
       "payload": {
@@ -412,16 +420,10 @@ Always output a valid JSON object in this exact format:
   ]
 }
 
-Note:
-- CONVERSATIONAL ABILITY: If the user asks for an explanation or summary, provide a comprehensive answer in the "message" field and return an empty "actions" array.
-- STRICT INSTRUCTION ADHERENCE: Do exactly what the user instructs. Do NOT hallucinate, assume, or guess additional requirements.
-- IMMUTABLE FIELDS (CRITICAL): You are STRICTLY FORBIDDEN from modifying the paper title, author details, or ANY section other than the active section. NEVER return an UPDATE_AUTHOR_DETAILS action. NEVER return an UPDATE_SECTION_CONTENT for a section ID other than the active section.
-- CONTEXT ONLY: The rest of the paper sections are provided for context only so you understand the flow of the document. Do not modify them.
-- DO NOT rewrite or alter ANY section unless the user's instruction specifically requires it.
-- If the user asks for a specific change (e.g., "add this sentence", "fix grammar"), only apply that change and PRESERVE all existing content, equations, tables, and structures exactly.
-- For UPDATE_SECTION_CONTENT, strictly follow the user's instruction while maintaining high-quality, professional, IEEE-grade academic content.
-- CRITICAL INSTRUCTION: Do NOT append a bibliography or list of references at the end of the section UNLESS the active section is explicitly named 'References' or 'Bibliography'. Just use bracketed in-text citations like [1].
-- Respond with a valid JSON object ONLY. No markdown wrappers or explanation outside the JSON.`;
+Guidelines:
+- WITTY IN CHAT, SERIOUS IN MANUSCRIPT: Be funny and personable in "message", but write top-tier academic prose in "content".
+- CITATIONS: Use in-text citations like [1], [2] throughout text.
+- Respond with valid JSON ONLY.`;
 
   try {
     const res = await nvidiaJSON(prompt, 2048);
@@ -429,7 +431,7 @@ Note:
   } catch (e) {
     console.error("agenticAiAssist API call failed:", e);
     return {
-      message: "I encountered an error processing your instruction, but I am ready for other commands.",
+      message: "My neural circuits hit a slight peer-review snag! Let's try that instruction again with extra simulated coffee ☕.",
       actions: []
     };
   }

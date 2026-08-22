@@ -2,9 +2,15 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Sparkles, Shield, FileText, ArrowRight, CheckCircle2, Zap, Search, Quote,
-  Star, Users, Award, BarChart3, Check, Crown, Menu, X
+  Star, Users, Award, BarChart3, Check, Crown, Menu, X, HelpCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useNavigate } from "react-router-dom";
 
 const journals = ["IEEE", "Springer", "Elsevier", "Scopus", "ACM"];
@@ -33,17 +39,86 @@ const stats = [
   { value: "98%", label: "Format Accuracy" },
 ];
 
-
-
 const plans = [
   { id: "free", name: "Free", price: "$0", period: "forever", features: ["3 papers/month", "5 AI generations/day", "Basic templates", "Text export"], popular: false },
   { id: "pro", name: "Pro", price: "$14.99", period: "/month", features: ["Unlimited papers", "Unlimited AI", "All templates", "PDF & LaTeX export", "AI editing", "Format validation"], popular: true },
   { id: "business", name: "Business", price: "$29.99", period: "/month", features: ["Everything in Pro", "5 team members", "Shared workspace", "Priority support", "Custom templates"], popular: false },
 ];
 
+const faqCategories = [
+  { id: "all", label: "All Questions" },
+  { id: "general", label: "General" },
+  { id: "templates", label: "Templates & Formatting" },
+  { id: "ai", label: "AI & Integrity" },
+  { id: "security", label: "Privacy & Security" },
+  { id: "pricing", label: "Pricing & Export" },
+];
+
+const faqs = [
+  {
+    category: "general",
+    question: "What is Latern Paper Forge and who is it designed for?",
+    answer:
+      "Latern Paper Forge is an AI-powered academic paper writing and formatting platform. It is engineered for PhD scholars, university professors, postgraduates, and independent researchers to accelerate drafting, citing, novelty-checking, and formatting publication-ready papers.",
+  },
+  {
+    category: "templates",
+    question: "Which journal formats and publisher styles are supported?",
+    answer:
+      "We support official author guidelines and templates for IEEE (Transactions & Conferences double-column style), Springer (LNCS, Nature style), Elsevier (ScienceDirect), ACM (SIGCONF), and standard Scopus/Web of Science indexed journals. Layouts, margins, typography, and citation conventions are automatically configured.",
+  },
+  {
+    category: "ai",
+    question: "How does AI generation ensure high academic rigor and originality?",
+    answer:
+      "Unlike generic chatbots, our models are specialized for scholarly literature. You provide your core methodology, experimental findings, and dataset specifics. The AI structures and drafts your paper following standard academic tone, empirical precision, and accurate terminology without generating hallucinated claims.",
+  },
+  {
+    category: "ai",
+    question: "How do Novelty Detection and Plagiarism Checks work?",
+    answer:
+      "Our novelty detector analyzes your research hypothesis against millions of indexed open-access papers and preprints (arXiv, bioRxiv) to highlight unique contributions and uncover existing research gaps. The built-in plagiarism check scans for semantic overlap and flags source references before submission.",
+  },
+  {
+    category: "security",
+    question: "Is my unpublished research data kept secure and confidential?",
+    answer:
+      "Yes, 100%. We understand that intellectual property is paramount. Your drafts, data points, diagrams, and formulas are encrypted both at rest and in transit. Your work is never used to train public machine learning models or shared with third parties.",
+  },
+  {
+    category: "pricing",
+    question: "What file formats can I export my paper into?",
+    answer:
+      "You can export your completed manuscript into LaTeX source files (.tex with .bib), formatted Microsoft Word documents (.docx), publication-ready PDFs with two-column or single-column layout, and standard Markdown.",
+  },
+  {
+    category: "templates",
+    question: "How does automated citation and bibliography management work?",
+    answer:
+      "You can enter a DOI, paper title, or arXiv ID to automatically retrieve and format citations into IEEE, APA 7, MLA 9, Chicago, Harvard, or BibTeX formats. All in-text citation numbers or author-year callouts automatically synchronize with your reference section.",
+  },
+  {
+    category: "general",
+    question: "Can I collaborate with my co-authors and research advisors?",
+    answer:
+      "Yes! With our Business and team workspaces, multiple collaborators can access shared papers, conduct peer reviews, suggest inline edits, and manage revisions together in real time.",
+  },
+  {
+    category: "pricing",
+    question: "Can I start using Latern Paper Forge for free?",
+    answer:
+      "Yes! Our Free plan provides up to 3 papers per month, 5 daily AI generations, and standard IEEE and Springer templates without requiring a credit card. You can upgrade to Pro or Business anytime for unlimited papers, LaTeX exports, and team collaboration.",
+  },
+];
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("all");
+
+  const filteredFaqs = selectedCategory === "all"
+    ? faqs
+    : faqs.filter((f) => f.category === selectedCategory);
 
   return (
     <div className="min-h-screen bg-background">
@@ -58,6 +133,7 @@ export default function LandingPage() {
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
+            <a href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</a>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="hidden sm:inline-flex">Sign In</Button>
@@ -85,6 +161,7 @@ export default function LandingPage() {
                 <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Features</a>
                 <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">How It Works</a>
                 <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">Pricing</a>
+                <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="text-sm text-muted-foreground hover:text-foreground transition-colors py-2">FAQ</a>
                 <div className="flex gap-2 pt-2 border-t border-border/50">
                   <Button variant="ghost" size="sm" onClick={() => { navigate("/auth"); setMobileMenuOpen(false); }} className="flex-1">Sign In</Button>
                   <Button variant="hero" size="sm" onClick={() => { navigate("/auth"); setMobileMenuOpen(false); }} className="flex-1">Get Started</Button>
@@ -188,8 +265,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-
-
       {/* Pricing */}
       <section id="pricing" className="py-16 sm:py-24 bg-muted/50">
         <div className="container mx-auto px-4 sm:px-6">
@@ -220,6 +295,92 @@ export default function LandingPage() {
                 </Button>
               </motion.div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section id="faq" className="py-16 sm:py-24">
+        <div className="container mx-auto px-4 sm:px-6 max-w-4xl">
+          <div className="text-center mb-10 sm:mb-14">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-sm text-accent">
+              <HelpCircle className="h-4 w-4" /> Got Questions? We've Got Answers
+            </div>
+            <h2 className="font-display text-2xl sm:text-4xl font-bold text-foreground">
+              Frequently Asked Questions
+            </h2>
+            <p className="mt-3 sm:mt-4 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
+              Everything you need to know about our journal templates, AI writing engine, novelty detection, and academic compliance.
+            </p>
+
+            {/* Category Filter Tabs */}
+            <div className="mt-8 flex flex-wrap justify-center gap-2">
+              {faqCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`rounded-full px-4 py-2 text-xs sm:text-sm font-medium transition-all ${
+                    selectedCategory === cat.id
+                      ? "bg-accent text-accent-foreground shadow-sm"
+                      : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Accordion List */}
+          <motion.div
+            layout
+            className="space-y-4"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <Accordion type="single" collapsible className="w-full space-y-4">
+              {filteredFaqs.map((faq, idx) => (
+                <AccordionItem
+                  key={`${faq.category}-${idx}`}
+                  value={`faq-${idx}`}
+                  className="rounded-xl border border-border bg-card px-5 sm:px-6 shadow-sm transition-all hover:border-accent/40 data-[state=open]:border-accent data-[state=open]:shadow-md"
+                >
+                  <AccordionTrigger className="text-left font-display text-base sm:text-lg font-semibold text-card-foreground hover:no-underline hover:text-accent py-4 sm:py-5">
+                    <span className="flex items-center gap-3 pr-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">
+                        Q
+                      </span>
+                      {faq.question}
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm sm:text-base text-muted-foreground leading-relaxed pt-1 pb-5 pl-10">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </motion.div>
+
+          {/* Support CTA Card */}
+          <div className="mt-12 rounded-2xl border border-border/80 bg-muted/40 p-6 sm:p-8 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-center sm:text-left">
+              <h3 className="font-display text-lg sm:text-xl font-bold text-foreground">
+                Still have more questions?
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Our team of researchers and support engineers is ready to help.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" onClick={() => navigate("/pricing")}>
+                View Pricing
+              </Button>
+              <Button variant="hero" size="sm" onClick={() => navigate("/auth")}>
+                Get Started Free
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -260,6 +421,7 @@ export default function LandingPage() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#features" className="hover:text-foreground">Features</a></li>
                 <li><a href="#pricing" className="hover:text-foreground">Pricing</a></li>
+                <li><a href="#faq" className="hover:text-foreground">FAQ</a></li>
                 <li><a href="#" className="hover:text-foreground">Templates</a></li>
                 <li><a href="#" className="hover:text-foreground">API</a></li>
               </ul>
@@ -267,6 +429,7 @@ export default function LandingPage() {
             <div>
               <h4 className="font-semibold text-foreground mb-3">Resources</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><a href="#faq" className="hover:text-foreground">FAQ</a></li>
                 <li><a href="#" className="hover:text-foreground">Documentation</a></li>
                 <li><a href="#" className="hover:text-foreground">Blog</a></li>
                 <li><a href="#" className="hover:text-foreground">Tutorials</a></li>
@@ -291,3 +454,4 @@ export default function LandingPage() {
     </div>
   );
 }
+

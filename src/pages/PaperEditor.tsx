@@ -5,7 +5,8 @@ import {
   MessageSquare, AlertTriangle, FileText, X, Send, Bold, Italic,
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
-  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload, Plus, Trash2, FileUp
+  Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload, Plus, Trash2, FileUp,
+  Coffee, Flame, Zap, Smile, RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -104,14 +105,92 @@ const journalOptions = formatCategories.flatMap((cat) =>
 
 const NON_GENERATABLE = ["title", "references", "works-cited", "bibliography", "reference-list"];
 
-const quickActions = [
-  "Improve writing style",
-  "Make more concise",
-  "Expand with details",
-  "Add academic tone",
-  "Fix grammar & punctuation",
-  "Add transition sentences",
-  "Strengthen argumentation",
+const PERSONAS = [
+  {
+    id: "supportive" as const,
+    name: "Professor Mentor",
+    icon: "🎓",
+    badge: "Encouraging & Wise",
+    color: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    greeting: "Hello! I'm your tenure-track co-author mentor. What scientific breakthrough are we refining today? (Remember: Step 1 of science is staring intently at a blank document ☕).",
+    actions: [
+      "🌟 Polish academic tone",
+      "📝 Expand active section",
+      "☕ 3 AM PhD pep talk",
+      "📐 Add empirical formulas & rigor",
+      "💬 Draft conclusion & impact",
+      "🛡️ Pre-empt reviewer doubts"
+    ]
+  },
+  {
+    id: "reviewer2" as const,
+    name: "Reviewer #2",
+    icon: "🧐",
+    badge: "Skeptical & Brutal",
+    color: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
+    greeting: "Reviewer #2 online. Show me your manuscript so I can demand 14 more baseline comparisons and complain about Figure 3's font size 🧐.",
+    actions: [
+      "🔥 Roast section like Reviewer 2",
+      "🧐 Find weak points & gaps",
+      "📉 Demand more baseline comparisons",
+      "✂️ Cut fluff & hand-waving",
+      "🛡️ Bulletproof my methodology",
+      "📊 Question statistical significance"
+    ]
+  },
+  {
+    id: "caffeinated" as const,
+    name: "PhD Gremlin",
+    icon: "☕",
+    badge: "Espresso Fueled",
+    color: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    greeting: "Yo! 4th cup of espresso down, LaTeX macros armed and ready. Tell me what section we're writing at 100 mph! 🚀",
+    actions: [
+      "⚡ Hyper-speed drafting",
+      "☕ Turn caffeine into prose",
+      "🚀 Make it sound 10x smarter",
+      "🔬 Elevate technical depth",
+      "🧹 Clean up sleepy 3 AM typos",
+      "🎯 Sharpen research novelty"
+    ]
+  },
+  {
+    id: "monk" as const,
+    name: "LaTeX Monk",
+    icon: "🧘",
+    badge: "Serene & Precise",
+    color: "border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+    greeting: "Peace be upon your document. Let us cleanse this manuscript of unescaped ampersands and bring serenity to your formatting 📜.",
+    actions: [
+      "📜 Elevate typesetting elegance",
+      "📐 Formalize mathematical definitions",
+      "✨ Harmonize section flow",
+      "🏷️ Refine citation numbering",
+      "⚖️ Balance paragraph weights",
+      "🧘 Simplify complex syntax"
+    ]
+  }
+];
+
+type PersonaType = typeof PERSONAS[number]["id"];
+
+const WITTY_LOADING_MESSAGES = [
+  "Consulting the LaTeX gods & double-checking margins...",
+  "Channeling pure simulated caffeine into publishable arguments...",
+  "Pre-emptively defending your hypothesis against Reviewer 2...",
+  "Turning vague hand-waving into dense mathematical rigor...",
+  "Fixing 3 AM typos and elevating academic tone...",
+  "Bribing Reviewer 2 with fresh coffee & p-values...",
+  "Formatting citations so IEEE reviewers don't lose sleep..."
+];
+
+const WITTY_QUIPS = [
+  "☕ Pro Tip: A rejected hypothesis is just a plot twist in your PhD story.",
+  "📊 In God we trust; all others must bring p < 0.05.",
+  "📜 There are two hard problems in science: naming variables, and convincing Reviewer 2.",
+  "✨ Your manuscript is looking crisp! Reviewer 2 might only complain about 3 things instead of 10.",
+  "☕ Simulated caffeine level critical: drafting power multiplied by 10x.",
+  "🎓 Fun fact: 80% of PhD progress occurs 24 hours before the camera-ready deadline."
 ];
 
 export default function PaperEditor() {
@@ -209,20 +288,17 @@ export default function PaperEditor() {
   }, []);
 
   const [aiMessage, setAiMessage] = useState("");
-  const [chatHistoryBySection, setChatHistoryBySection] = useState<Record<string, { sender: "user" | "ai"; message: string }[]>>({});
-  const chatHistory = chatHistoryBySection[activeSection] || [
-    { sender: "ai", message: "Hello! I am your section-specific AI co-author. Tell me to edit this section, resize images, or summarize the content!" }
-  ];
-  
-  const setChatHistory = useCallback((updateFn: React.SetStateAction<{ sender: "user" | "ai"; message: string }[]>) => {
-    setChatHistoryBySection(prev => {
-      const current = prev[activeSection] || [
-        { sender: "ai", message: "Hello! I am your section-specific AI co-author. Tell me to edit this section, resize images, or summarize the content!" }
-      ];
-      const next = typeof updateFn === "function" ? updateFn(current) : updateFn;
-      return { ...prev, [activeSection]: next };
-    });
-  }, [activeSection]);
+  const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [targetScope, setTargetScope] = useState<string>("active");
+  const [coAuthorPersona, setCoAuthorPersona] = useState<PersonaType>("supportive");
+  const [coffeeLevel, setCoffeeLevel] = useState(88);
+  const [loadingQuipIndex, setLoadingQuipIndex] = useState(0);
+  const [chatHistory, setChatHistory] = useState<{ sender: "user" | "ai"; message: string }[]>([
+    {
+      sender: "ai",
+      message: PERSONAS[0].greeting
+    }
+  ]);
   const [showJournalPicker, setShowJournalPicker] = useState(isNew);
   const [showMetaForm, setShowMetaForm] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -955,14 +1031,50 @@ export default function PaperEditor() {
     }
   }, [autoSave, optimizeImage]);
 
-  // Agentic AI Chat Assist
-  const handleAgenticAiAssist = useCallback(async (instruction: string) => {
+  // Loading status quip cycler
+  useEffect(() => {
+    let interval: any;
+    if (isAssisting) {
+      interval = setInterval(() => {
+        setLoadingQuipIndex((prev) => (prev + 1) % WITTY_LOADING_MESSAGES.length);
+      }, 2400);
+    }
+    return () => clearInterval(interval);
+  }, [isAssisting]);
+
+  // Caffeine Booster
+  const handleBoostCaffeine = useCallback(() => {
+    setCoffeeLevel((prev) => Math.min(100, prev + 25));
+    const randomQuip = WITTY_QUIPS[Math.floor(Math.random() * WITTY_QUIPS.length)];
+    toast.success("☕ +25mg simulated caffeine injected!", { description: randomQuip });
+  }, []);
+
+  // Persona Selector
+  const handleSelectPersona = useCallback((pId: PersonaType) => {
+    setCoAuthorPersona(pId);
+    const p = PERSONAS.find(item => item.id === pId);
+    if (p) {
+      setChatHistory(prev => [
+        ...prev,
+        {
+          sender: "ai",
+          message: `${p.icon} **Switched to ${p.name} Mode (${p.badge})**\n\n${p.greeting}`
+        }
+      ]);
+    }
+  }, []);
+
+  // Common Agentic AI Chat Assist
+  const handleAgenticAiAssist = useCallback(async (instruction: string, customSectionId?: string) => {
     if (!instruction.trim()) return;
     
     // Add user message to history
     setChatHistory(prev => [...prev, { sender: "user", message: instruction }]);
     setAiMessage("");
     setIsAssisting(true);
+    setCoffeeLevel(prev => Math.max(12, prev - 3));
+
+    const targetSection = customSectionId || (targetScope === "all" ? undefined : (targetScope === "active" ? activeSection : targetScope));
 
     // Intercept instructions to minimize, maximize, optimize, or remove diagrams locally for ultra-fast response
     const lowerInstruction = instruction.toLowerCase();
@@ -973,56 +1085,52 @@ export default function PaperEditor() {
       lowerInstruction.includes("remove") ||
       lowerInstruction.includes("delete")
     ) {
-      let targetSectionId = activeSection;
+      let diagTargetSection = targetSection || activeSection;
       for (const s of sections) {
         if (lowerInstruction.includes(s.label.toLowerCase()) || lowerInstruction.includes(s.id.toLowerCase())) {
-          targetSectionId = s.id;
+          diagTargetSection = s.id;
           break;
         }
       }
 
-      const sectionDiags = sectionDiagrams[targetSectionId] || [];
+      const sectionDiags = sectionDiagrams[diagTargetSection] || [];
 
       if (sectionDiags.length > 0) {
         const targetDiag = sectionDiags[0];
         const diagId = targetDiag.id || "";
-        const label = sections.find(s => s.id === targetSectionId)?.label || targetSectionId;
+        const label = sections.find(s => s.id === diagTargetSection)?.label || diagTargetSection;
 
         if (lowerInstruction.includes("minimize")) {
-          handleResizeDiagram(targetSectionId, diagId, "40%");
-          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully minimized the diagram in the "${label}" section to a compact 40% width.` }]);
+          handleResizeDiagram(diagTargetSection, diagId, "40%");
+          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully minimized the diagram in the "${label}" section to 40% width. (Reviewer 2 cannot complain it takes too much space now 🔍).` }]);
           setIsAssisting(false);
-          setAiMessage("");
           return;
         }
         if (lowerInstruction.includes("maximize")) {
-          handleResizeDiagram(targetSectionId, diagId, "100%");
-          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully maximized the diagram in the "${label}" section to 100% full width.` }]);
+          handleResizeDiagram(diagTargetSection, diagId, "100%");
+          setChatHistory(prev => [...prev, { sender: "ai", message: `I have maximized the diagram in the "${label}" section to 100% full width. High-resolution glory achieved 📈!` }]);
           setIsAssisting(false);
-          setAiMessage("");
           return;
         }
         if (lowerInstruction.includes("remove") || lowerInstruction.includes("delete")) {
-          handleRemoveDiagram(targetSectionId, diagId);
-          setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully removed the diagram/image in the "${label}" section.` }]);
+          handleRemoveDiagram(diagTargetSection, diagId);
+          setChatHistory(prev => [...prev, { sender: "ai", message: `I have removed the diagram/image in the "${label}" section. Cleaned up like a rejected hypothesis 🧹.` }]);
           setIsAssisting(false);
-          setAiMessage("");
           return;
         }
         if (lowerInstruction.includes("optimize")) {
           if (targetDiag.type === "image" && targetDiag.imageData) {
             try {
-              await handleOptimizeDiagramImage(targetSectionId, diagId);
-              setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully compressed and optimized the uploaded image in the "${label}" section!` }]);
+              await handleOptimizeDiagramImage(diagTargetSection, diagId);
+              setChatHistory(prev => [...prev, { sender: "ai", message: `I have successfully compressed and optimized the image in the "${label}" section! Ready for high-DPI IEEE printing 🎨.` }]);
             } catch {
-              setChatHistory(prev => [...prev, { sender: "ai", message: `I encountered an issue compressing the image in the "${label}" section.` }]);
+              setChatHistory(prev => [...prev, { sender: "ai", message: `I encountered an issue compressing the image in the "${label}" section. Let's try again!` }]);
             }
           } else {
-            handleResizeDiagram(targetSectionId, diagId, "70%");
+            handleResizeDiagram(diagTargetSection, diagId, "70%");
             setChatHistory(prev => [...prev, { sender: "ai", message: `I have optimized the scale of the diagram in the "${label}" section to a balanced 70% width.` }]);
           }
           setIsAssisting(false);
-          setAiMessage("");
           return;
         }
       }
@@ -1030,7 +1138,7 @@ export default function PaperEditor() {
     
     const journalName = journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE";
     
-    toast.info("Agent is analyzing and alter-editing your paper...");
+    toast.info("AI Co-Author is analyzing and updating your paper...");
     
     try {
       const response = await agenticAiAssist({
@@ -1039,7 +1147,8 @@ export default function PaperEditor() {
         paperMeta,
         authorDetails,
         journal: journalName,
-        activeSectionId: activeSection
+        activeSectionId: targetSection,
+        persona: coAuthorPersona
       });
       
       // Add AI reply to history
@@ -1047,7 +1156,7 @@ export default function PaperEditor() {
       
       // Execute each action sequentially
       if (response.actions && response.actions.length > 0) {
-        toast.info(`Executing ${response.actions.length} agentic operations...`);
+        toast.info(`Executing ${response.actions.length} AI operations...`);
         
         response.actions.forEach((action) => {
           switch (action.type) {
@@ -1068,17 +1177,10 @@ export default function PaperEditor() {
                   methodology: action.payload.methodology !== undefined ? action.payload.methodology : prev.methodology,
                   results_summary: action.payload.results_summary !== undefined ? action.payload.results_summary : prev.results_summary,
                 };
-                // Automatically auto-save updated metadata
                 autoSave(sections, updated);
                 return updated;
               });
               toast.success("Updated paper research details!");
-              break;
-            }
-            case "UPDATE_AUTHOR_DETAILS": {
-              // Agent logic may try to update the old structure, or we can just leave it for now.
-              // We'll update the agentic logic in ai.ts later, but for now we ignore or adapt it.
-              toast.success("Updated author affiliations! (Agent support pending)");
               break;
             }
             case "RESIZE_DIAGRAM": {
@@ -1096,12 +1198,12 @@ export default function PaperEditor() {
       }
     } catch (e) {
       console.error("Agentic AI assist failed:", e);
-      toast.error("Failed to execute agentic command.");
-      setChatHistory(prev => [...prev, { sender: "ai", message: "Apologies, I encountered an issue modifying the document. Please let me know how to try again!" }]);
+      toast.error("Failed to execute AI command.");
+      setChatHistory(prev => [...prev, { sender: "ai", message: "Apologies, I encountered a slight peer-review glitch. Please let me know how to try again! ☕" }]);
     } finally {
       setIsAssisting(false);
     }
-  }, [sections, paperMeta, authorDetails, selectedJournal, autoSave, handleResizeDiagram, handleRemoveDiagram, activeSection, sectionDiagrams, handleOptimizeDiagramImage]);
+  }, [sections, paperMeta, authorDetails, selectedJournal, autoSave, handleResizeDiagram, handleRemoveDiagram, activeSection, sectionDiagrams, handleOptimizeDiagramImage, targetScope, coAuthorPersona]);
 
   const handleCreatePaper = async () => {
     const title = sections.find((s) => s.id === "title")?.content || "Untitled Paper";
@@ -1847,6 +1949,14 @@ export default function PaperEditor() {
         </nav>
 
         <div className="border-t border-border p-3 space-y-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full gap-2 justify-start border-accent/40 bg-accent/5 hover:bg-accent/10 text-accent font-semibold shadow-xs" 
+            onClick={() => setShowAiAssistant(true)}
+          >
+            <Sparkles className="h-4 w-4 text-accent" /> AI Co-Author
+          </Button>
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={handleValidateFormat} disabled={isValidating}>
             {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />} Validate Format
           </Button>
@@ -1903,6 +2013,15 @@ export default function PaperEditor() {
                 <Eye className="h-3 w-3" /> Paper
               </button>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs gap-1 border-accent/40 text-accent"
+              onClick={() => setShowAiAssistant(true)}
+              title="AI Co-Author"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+            </Button>
             <span className="text-xs text-muted-foreground">{filledSections}/{sections.length}</span>
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleManualSave} disabled={isSaving || !paperId}>
               <Save className="h-3 w-3" />
@@ -1971,6 +2090,16 @@ export default function PaperEditor() {
                 <><CheckCircle2 className="h-3 w-3 text-success" /> Saved</>
               ) : null}
             </span>
+
+            {/* Common AI Assistant Launcher Button */}
+            <Button
+              variant={showAiAssistant ? "hero" : "outline"}
+              size="sm"
+              className={`gap-2 border-accent/40 ${!showAiAssistant ? "text-accent bg-accent/5 hover:bg-accent/10" : ""}`}
+              onClick={() => setShowAiAssistant(!showAiAssistant)}
+            >
+              <Sparkles className="h-4 w-4" /> AI Co-Author
+            </Button>
 
             <Button variant="ghost" size="sm" className="gap-2 text-accent" onClick={handleCompleteEntirePaper} disabled={isBusy}>
               {isCompletingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -2168,87 +2297,6 @@ export default function PaperEditor() {
                       ) : null}
                     </div>
                   )}
-
-
-                  {/* Section-Specific AI Assistant */}
-                  <div className="mt-8 border border-accent/20 rounded-xl overflow-hidden bg-accent/5 shadow-sm">
-                    <div className="bg-accent/10 px-4 py-2 border-b border-accent/20 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-accent" />
-                        <span className="font-semibold text-sm text-accent-foreground">Section AI Assistant</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">Editing: {currentSection?.label}</span>
-                    </div>
-                    <div className="p-4 space-y-4">
-                      {chatHistory.length > 0 && (
-                        <div ref={chatContainerRef} className="max-h-60 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
-                          {chatHistory.map((chat, idx) => {
-                            const isAi = chat.sender === "ai";
-                            return (
-                              <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className={`flex flex-col max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                                  isAi 
-                                    ? "bg-card text-foreground self-start rounded-tl-none border border-border" 
-                                    : "bg-accent text-accent-foreground self-end rounded-tr-none shadow-sm ml-auto"
-                                }`}
-                              >
-                                <span className="font-semibold text-[10px] opacity-70 mb-0.5 tracking-wider uppercase">
-                                  {isAi ? "🤖 Agentic Co-Author" : "👤 You"}
-                                </span>
-                                <span className="whitespace-pre-wrap">{chat.message}</span>
-                              </motion.div>
-                            );
-                          })}
-                          {isAssisting && (
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              className="flex items-center gap-1.5 text-xs text-accent bg-background self-start px-3 py-2 rounded-2xl border border-accent/20"
-                            >
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              <span>Agent alter-editing section...</span>
-                            </motion.div>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Quick Actions */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {quickActions.map((action) => (
-                          <button 
-                            key={action} 
-                            onClick={() => handleAgenticAiAssist(action)} 
-                            disabled={isBusy}
-                            className="text-[11px] bg-background text-muted-foreground hover:bg-accent/10 hover:text-accent border border-border/60 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-40 shadow-sm"
-                          >
-                            {action}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Input */}
-                      <div className="flex gap-2 relative">
-                        <input
-                          className="flex-1 rounded-xl border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent shadow-sm"
-                          placeholder={`Instruct agent to edit ${currentSection?.label.toLowerCase()}...`}
-                          value={aiMessage}
-                          onChange={(e) => setAiMessage(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && aiMessage.trim()) handleAgenticAiAssist(aiMessage); }}
-                          disabled={isBusy}
-                        />
-                        <button
-                          className="absolute right-2 top-1.5 p-1.5 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
-                          onClick={() => { if (aiMessage.trim()) handleAgenticAiAssist(aiMessage); }}
-                          disabled={isBusy || !aiMessage.trim()}
-                        >
-                          {isAssisting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </motion.div>
               </div>
             </div>
@@ -2265,6 +2313,13 @@ export default function PaperEditor() {
         {/* Mobile bottom action bar */}
         <div className="md:hidden border-t border-border bg-card px-1 py-1.5 shrink-0 safe-area-bottom">
           <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
+            <button
+              onClick={() => setShowAiAssistant(true)}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-accent hover:bg-accent/10 transition-colors shrink-0"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span className="text-[10px] font-semibold">AI Co-Author</span>
+            </button>
             {canGenerate && (
               <button
                 onClick={handleGenerateSection}
@@ -2364,6 +2419,9 @@ export default function PaperEditor() {
               </nav>
 
               <div className="border-t border-border p-3 space-y-2">
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start border-accent/40 text-accent font-semibold" onClick={() => { setShowMobileSections(false); setShowAiAssistant(true); }}>
+                  <Sparkles className="h-4 w-4 text-accent" /> AI Co-Author
+                </Button>
                 <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); handleValidateFormat(); }} disabled={isValidating}>
                   {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />} Validate Format
                 </Button>
@@ -2869,6 +2927,246 @@ export default function PaperEditor() {
               {/* Premium Footer Animation */}
               <div className="mt-8 pt-4 border-t border-border/50 text-[10px] text-muted-foreground/50 tracking-wider uppercase font-semibold">
                 PaperForge Scientific Compiler
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Common AI Co-Author Launcher */}
+      {!showAiAssistant && (
+        <motion.button
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowAiAssistant(true)}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-accent text-accent-foreground px-4 py-3 shadow-gold font-medium text-sm hover:bg-accent/90 transition-all cursor-pointer border border-accent/40"
+          title="Open AI Co-Author Assistant"
+        >
+          <Sparkles className="h-5 w-5" />
+          <span className="font-semibold hidden sm:inline">AI Co-Author</span>
+        </motion.button>
+      )}
+
+      {/* Common AI Co-Author Assistant Drawer */}
+      <AnimatePresence>
+        {showAiAssistant && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center sm:justify-end bg-black/40 backdrop-blur-xs p-0 sm:p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-card rounded-none sm:rounded-2xl border border-border shadow-2xl w-full sm:max-w-lg h-full sm:h-[90vh] flex flex-col overflow-hidden"
+              initial={{ x: 400, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 400, opacity: 0 }}
+              transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-border bg-gradient-to-r from-accent/10 via-background to-accent/5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-accent-foreground shadow-md shadow-accent/20 text-lg">
+                      {PERSONAS.find(p => p.id === coAuthorPersona)?.icon || "🤖"}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-display text-base font-bold text-foreground">
+                          {PERSONAS.find(p => p.id === coAuthorPersona)?.name || "AI Co-Author"}
+                        </h3>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${PERSONAS.find(p => p.id === coAuthorPersona)?.color}`}>
+                          {PERSONAS.find(p => p.id === coAuthorPersona)?.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">Interactive Academic Collaborator & Editor</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setChatHistory([
+                        {
+                          sender: "ai",
+                          message: PERSONAS.find(p => p.id === coAuthorPersona)?.greeting || "How can I assist your research paper today?"
+                        }
+                      ])}
+                      className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors cursor-pointer"
+                      title="Clear Chat History"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => setShowAiAssistant(false)}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Persona Mode Switcher Pills */}
+                <div className="mt-3 grid grid-cols-4 gap-1.5 p-1 rounded-xl bg-muted/60 border border-border/60">
+                  {PERSONAS.map((p) => {
+                    const isSelected = coAuthorPersona === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => handleSelectPersona(p.id)}
+                        className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-card text-foreground shadow-sm font-semibold border border-border scale-[1.02]"
+                            : "text-muted-foreground hover:text-foreground hover:bg-card/40"
+                        }`}
+                        title={p.badge}
+                      >
+                        <span className="text-sm">{p.icon}</span>
+                        <span className="truncate max-w-[75px]">{p.name.split(" ")[0]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Interactive Mood & Target Scope Bar */}
+              <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center justify-between gap-3 text-xs">
+                {/* Caffeine Booster Widget */}
+                <button
+                  onClick={handleBoostCaffeine}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-all active:scale-95 cursor-pointer shrink-0"
+                  title="Click to inject +25mg simulated caffeine and get an academic quip!"
+                >
+                  <Coffee className="h-3.5 w-3.5" />
+                  <span className="font-bold text-[11px]">{coffeeLevel}% Caffeine</span>
+                  <Plus className="h-3 w-3 opacity-70" />
+                </button>
+
+                {/* Target Scope Dropdown */}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-muted-foreground font-medium shrink-0">Scope:</span>
+                  <select
+                    value={targetScope}
+                    onChange={(e) => setTargetScope(e.target.value)}
+                    className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent max-w-[180px] truncate"
+                  >
+                    <option value="active">Active ({currentSection?.label || activeSection})</option>
+                    <option value="all">Entire Paper (All)</option>
+                    {sections.map((s) => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Chat Messages Body */}
+              <div
+                ref={chatContainerRef}
+                className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin bg-background/40"
+              >
+                {chatHistory.map((chat, idx) => {
+                  const isAi = chat.sender === "ai";
+                  const currentP = PERSONAS.find(p => p.id === coAuthorPersona);
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`flex flex-col max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        isAi
+                          ? "bg-card text-card-foreground self-start rounded-tl-none border border-border shadow-xs"
+                          : "bg-accent text-accent-foreground self-end rounded-tr-none shadow-sm ml-auto font-medium"
+                      }`}
+                    >
+                      <span className="font-semibold text-[10px] opacity-75 mb-1.5 tracking-wider uppercase flex items-center gap-1.5">
+                        {isAi ? `${currentP?.icon || "🤖"} ${currentP?.name || "AI Co-Author"}` : "👤 You"}
+                      </span>
+                      <div className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed">
+                        {chat.message}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+
+                {/* Animated Humorous Loading State */}
+                {isAssisting && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex flex-col gap-1.5 bg-card/90 border border-accent/30 rounded-2xl p-3.5 shadow-sm max-w-[92%] self-start"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold text-accent">
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0 text-accent" />
+                      <span>Co-Author is working hard...</span>
+                    </div>
+                    <motion.p
+                      key={loadingQuipIndex}
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -3 }}
+                      className="text-xs text-muted-foreground italic pl-6"
+                    >
+                      {WITTY_LOADING_MESSAGES[loadingQuipIndex]}
+                    </motion.p>
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Persona-Specific Quick Action Chips & Humor Starters */}
+              <div className="p-3 border-t border-border bg-card/60 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <span>{PERSONAS.find(p => p.id === coAuthorPersona)?.name} Actions:</span>
+                  <span className="text-[10px] text-accent/80 font-normal lowercase">1-click prompts</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 scrollbar-thin">
+                  {(PERSONAS.find(p => p.id === coAuthorPersona)?.actions || []).map((action) => (
+                    <button
+                      key={action}
+                      onClick={() => handleAgenticAiAssist(action)}
+                      disabled={isBusy}
+                      className="text-[11px] bg-background hover:bg-accent/10 hover:text-accent border border-border/80 rounded-lg px-2.5 py-1 text-muted-foreground transition-all disabled:opacity-40 shadow-2xs hover:scale-[1.02] active:scale-95 cursor-pointer font-medium"
+                    >
+                      {action}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Input Footer */}
+              <div className="p-3 border-t border-border bg-card">
+                <div className="flex gap-2 relative">
+                  <input
+                    className="flex-1 rounded-xl border border-input bg-background pl-3.5 pr-10 py-2.5 text-xs sm:text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent shadow-xs"
+                    placeholder={
+                      coAuthorPersona === "reviewer2"
+                        ? "Ask Reviewer 2 to critique or strengthen your manuscript..."
+                        : coAuthorPersona === "caffeinated"
+                        ? "Drop a prompt for high-speed espresso drafting..."
+                        : targetScope === "all"
+                        ? "Ask or instruct AI about the entire paper..."
+                        : `Instruct AI to edit ${sections.find(s => s.id === (targetScope === 'active' ? activeSection : targetScope))?.label || 'section'}...`
+                    }
+                    value={aiMessage}
+                    onChange={(e) => setAiMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && aiMessage.trim() && !isBusy) {
+                        handleAgenticAiAssist(aiMessage);
+                      }
+                    }}
+                    disabled={isBusy}
+                  />
+                  <button
+                    className="absolute right-2 top-1.5 p-1.5 bg-accent text-accent-foreground rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 cursor-pointer"
+                    onClick={() => {
+                      if (aiMessage.trim() && !isBusy) {
+                        handleAgenticAiAssist(aiMessage);
+                      }
+                    }}
+                    disabled={isBusy || !aiMessage.trim()}
+                  >
+                    {isAssisting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
