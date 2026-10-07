@@ -23,7 +23,7 @@ import { distributeAssets } from "@/lib/ai";
 // ── AI generation for report sections ──
 const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
 const NVIDIA_BASE_URL = "/api/nvidia/v1";
-const NVIDIA_MODEL = "meta/llama-3.1-8b-instruct";
+const NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct";
 
 function stripMarkdownReport(text: string): string {
   // Allow markdown tables and mermaid code blocks.
@@ -78,7 +78,13 @@ Write detailed, professional report content. No meta-commentary or filler. Outpu
 
     if (!resp.ok || !resp.body) {
       if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
-      opts.onError("Generation failed");
+      const text = await resp.text();
+      let msg = "Generation failed";
+      try {
+        const errObj = JSON.parse(text);
+        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
+      } catch {}
+      opts.onError(msg);
       return;
     }
 

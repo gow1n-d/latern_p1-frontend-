@@ -1,6 +1,6 @@
 const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
 const NVIDIA_BASE_URL = "/api/nvidia/v1";
-const NVIDIA_MODEL = "meta/llama-3.1-8b-instruct";
+const NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct";
 
 import { getSystemPrompt } from './stealth/prompts';
 import { postprocess } from './stealth/postprocess';
@@ -187,7 +187,12 @@ async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 204
     if (!resp.ok || !resp.body) {
       if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
       const text = await resp.text();
-      try { opts.onError(JSON.parse(text).error?.message || "Generation failed"); } catch { opts.onError("Generation failed"); }
+      let msg = "Generation failed";
+      try {
+        const errObj = JSON.parse(text);
+        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
+      } catch {}
+      opts.onError(msg);
       return;
     }
 
@@ -230,7 +235,15 @@ async function nvidiaJSON(prompt: string, maxTokens = 1024, modelOverride?: stri
       response_format: { type: "json_object" }
     }),
   });
-  if (!resp.ok) throw new Error("API failed");
+  if (!resp.ok) {
+    const text = await resp.text();
+    let msg = "API failed";
+    try {
+      const errObj = JSON.parse(text);
+      msg = errObj.error?.message || errObj.detail || errObj.title || msg;
+    } catch {}
+    throw new Error(msg);
+  }
   const data = await resp.json();
   return cleanAndParseJSON(data.choices?.[0]?.message?.content || "{}");
 }
@@ -461,7 +474,7 @@ export async function humanizeText(
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
       body: JSON.stringify({
-        model: "meta/llama-3.1-70b-instruct", // Upgraded to 70B for much higher accuracy and instruction adherence
+        model: "meta/llama-3.2-90b-vision-instruct", // Upgraded to 90B for much higher accuracy and instruction adherence
         messages: [{ role: "user", content: prompt }],
         stream: false,
         temperature: 0.95, // Slightly higher temperature for more human-like randomness
@@ -471,7 +484,13 @@ export async function humanizeText(
 
     if (!resp.ok) {
       if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
-      opts.onError("Generation failed");
+      const text = await resp.text();
+      let msg = "Generation failed";
+      try {
+        const errObj = JSON.parse(text);
+        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
+      } catch {}
+      opts.onError(msg);
       return;
     }
 
@@ -651,8 +670,8 @@ ${fullText}
 
 Return ONLY valid JSON in this exact format:
 {"success":true,"originality_score":0-100,"ai_detection_score":0-100,"overall_risk":"low"|"medium"|"high","total_sources_matched":number,"sections":[{"name":"section name","originality":0-100,"ai_likelihood":0-100,"flags":["specific issue found"],"suggestions":["specific actionable fix"],"matches":[{"phrase":"exact flagged phrase","url":"","title":"potential source or pattern name","source":"detection method","snippet":"context","similarity":0-100}]}],"common_phrases":["list of cliché/template phrases found"],"recommendations":["specific actionable recommendations"]}`;
-        // Upgraded to 70B model for extreme accuracy in plagiarism/AI detection
-        return await nvidiaJSON(prompt, 1024, "meta/llama-3.1-70b-instruct") as PlagiarismResult;
+        // Upgraded to 90B model for extreme accuracy in plagiarism/AI detection
+        return await nvidiaJSON(prompt, 1024, "meta/llama-3.2-90b-vision-instruct") as PlagiarismResult;
       } catch {
         return null;
       }

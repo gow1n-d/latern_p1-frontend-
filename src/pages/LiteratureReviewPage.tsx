@@ -60,7 +60,7 @@ Write a thorough, well-cited academic literature review. Synthesize across all p
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
       body: JSON.stringify({
-        model: "meta/llama-3.1-8b-instruct",
+        model: "meta/llama-3.2-11b-vision-instruct",
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: prompt }],
         stream: true,
         temperature: 0.7,
@@ -70,7 +70,13 @@ Write a thorough, well-cited academic literature review. Synthesize across all p
 
     if (!resp.ok || !resp.body) {
       if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
-      opts.onError("Generation failed");
+      const text = await resp.text();
+      let msg = "Generation failed";
+      try {
+        const errObj = JSON.parse(text);
+        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
+      } catch {}
+      opts.onError(msg);
       return;
     }
 
