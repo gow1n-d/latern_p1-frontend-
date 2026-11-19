@@ -88,13 +88,12 @@ Write detailed, professional report content. No meta-commentary or filler. Outpu
         });
 
         if (!resp.ok || !resp.body) {
-          if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
           const text = await resp.text();
           try {
             const errObj = JSON.parse(text);
             lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
           } catch {
-            lastError = `Status ${resp.status}`;
+            lastError = resp.status === 429 ? "Rate limit reached. Trying fallback..." : `Status ${resp.status}`;
           }
           console.warn(`Report model ${model} failed (${resp.status}): ${lastError}. Trying fallback...`);
           continue;

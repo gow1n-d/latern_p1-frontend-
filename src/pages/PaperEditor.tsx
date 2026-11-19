@@ -1320,6 +1320,7 @@ export default function PaperEditor() {
     setIsHumanizing(true);
     
     try {
+      const updated = [...sections];
       await Promise.all(sectionsToHumanize.map(async (sec) => {
         let accumulated = "";
         await humanizeText(
@@ -1328,21 +1329,24 @@ export default function PaperEditor() {
             onDelta: (text) => {
               accumulated += text;
               const current = stripMarkdown(accumulated);
-              setSections((prev) => prev.map((s) => (s.id === sec.id ? { ...s, content: current } : s)));
+              const idx = updated.findIndex(s => s.id === sec.id);
+              if (idx !== -1) updated[idx] = { ...updated[idx], content: current };
+              setSections([...updated]);
             },
             onDone: () => {},
             onError: (err) => console.error(err),
           }
         );
       }));
+      setSections([...updated]);
+      autoSave(updated);
       toast.success("Entire paper humanized successfully!");
-      setSections((prev) => { autoSave(prev); return prev; });
     } catch (err) {
       toast.error("Failed to humanize some sections.");
     } finally {
       setIsHumanizing(false);
     }
-  }, [sections, selectedJournal, autoSave]);
+  }, [sections, selectedJournal, paperMeta.domain, autoSave]);
 
   // Validate format
   const handleValidateFormat = async () => {
@@ -1383,11 +1387,17 @@ export default function PaperEditor() {
     try {
       const title = sections.find(s => s.id === "title")?.content;
       const result = await searchScholar({ query: scholarQuery, journal: selectedJournal, paperTitle: title });
-      setScholarResults(result.results || []);
+      if (result.results && result.results.length > 0) {
+        setScholarResults(result.results);
+      } else {
+        setScholarResults([]);
+        toast.info("No matching papers found. Try broadening your search query.");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Scholar search failed");
+    } finally {
+      setIsSearchingScholar(false);
     }
-    setIsSearchingScholar(false);
   };
 
   const addReferenceFromScholar = (ref: ScholarResult) => {
@@ -1610,9 +1620,12 @@ export default function PaperEditor() {
     }
 
     try {
+      const updatedSections = [...sections];
       // Run in parallel for ultra-fast fixing
       await Promise.all(targetSections.map(async (flagged) => {
-        const sec = sections.find(s => s.label === flagged.name);
+        const secIndex = updatedSections.findIndex(s => s.label === flagged.name);
+        if (secIndex === -1) return;
+        const sec = updatedSections[secIndex];
         if (!sec || !sec.content.trim() || ["title", "keywords", "references"].includes(sec.id)) return;
         
         let accumulated = "";
@@ -1622,7 +1635,8 @@ export default function PaperEditor() {
             onDelta: (text) => {
               accumulated += text;
               const current = stripMarkdown(accumulated);
-              setSections((prev) => prev.map((s) => (s.id === sec.id ? { ...s, content: current } : s)));
+              updatedSections[secIndex] = { ...updatedSections[secIndex], content: current };
+              setSections([...updatedSections]);
             },
             onDone: () => {},
             onError: (err) => console.error(err),
@@ -1630,25 +1644,24 @@ export default function PaperEditor() {
         );
       }));
 
+      autoSave(updatedSections);
       // Auto-rescan after fixing
       toast.info("Re-checking plagiarism & AI detection...");
-      setSections(prev => {
-        const result = checkPlagiarism({ sections: prev, journal: selectedJournal });
-        result.then(res => {
-          setPlagiarismResult(res);
-          if (res.originality_score >= 70 && res.ai_detection_score <= 40) {
-            toast.success("All plagiarism/AI issues resolved! ✅");
-          } else {
-            toast.success("Content improved! Run again for further refinement.");
-          }
-        }).catch(() => {});
-        return prev;
-      });
+      try {
+        const res = await checkPlagiarism({ sections: updatedSections, journal: selectedJournal });
+        setPlagiarismResult(res);
+        if (res.originality_score >= 70 && res.ai_detection_score <= 40) {
+          toast.success("All plagiarism/AI issues resolved! ✅");
+        } else {
+          toast.success("Content improved! Run again for further refinement.");
+        }
+      } catch (checkErr) {
+        console.error("Re-check failed:", checkErr);
+      }
     } catch (err) {
       toast.error("Failed to fix some sections.");
     } finally {
       setIsFixingPlagiarism(false);
-      setSections((prev) => { autoSave(prev); return prev; });
     }
   }, [plagiarismResult, sections, selectedJournal, autoSave]);
 

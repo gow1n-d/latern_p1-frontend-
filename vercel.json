@@ -5,6 +5,10 @@
       "destination": "https://integrate.api.nvidia.com/:path*"
     },
     {
+      "source": "/api/zerogpt/:path*",
+      "destination": "https://api.zerogpt.com/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

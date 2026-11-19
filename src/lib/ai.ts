@@ -20,12 +20,39 @@ type StreamOptions = {
 
 function cleanAndParseJSON(text: string) {
   let t = text.trim();
-  if (t.startsWith("```")) {
-    const lines = t.split("\n");
-    lines.shift();
-    if (lines[lines.length - 1]?.startsWith("```")) lines.pop();
-    t = lines.join("\n").trim();
+
+  // 1. Try direct parse first
+  try {
+    return JSON.parse(t);
+  } catch {}
+
+  // 2. Extract from markdown code fences anywhere in text
+  const fenceMatch = t.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch {}
   }
+
+  // 3. Extract outermost { ... }
+  const firstBrace = t.indexOf('{');
+  const lastBrace = t.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(t.slice(firstBrace, lastBrace + 1));
+    } catch {}
+  }
+
+  // 4. Extract outermost [ ... ]
+  const firstBracket = t.indexOf('[');
+  const lastBracket = t.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(t.slice(firstBracket, lastBracket + 1));
+    } catch {}
+  }
+
+  // Final fallback: try raw
   return JSON.parse(t);
 }
 
@@ -195,13 +222,12 @@ async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 204
       });
 
       if (!resp.ok || !resp.body) {
-        if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
         const text = await resp.text();
         try {
           const errObj = JSON.parse(text);
           lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
         } catch {
-          lastError = `Status ${resp.status}`;
+          lastError = resp.status === 429 ? "Rate limit reached. Trying fallback..." : `Status ${resp.status}`;
         }
         console.warn(`Model ${model} failed (${resp.status}): ${lastError}. Trying fallback model...`);
         continue;
@@ -540,12 +566,13 @@ export async function humanizeText(
         });
 
         if (!resp.ok) {
-          if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
           const text = await resp.text();
           try {
             const errObj = JSON.parse(text);
             lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
-          } catch {}
+          } catch {
+            lastError = resp.status === 429 ? "Rate limit reached. Trying fallback..." : `Status ${resp.status}`;
+          }
           continue;
         }
 
@@ -736,7 +763,7 @@ ${fullText}
 
 Return ONLY valid JSON in this exact format:
 {"success":true,"originality_score":0-100,"ai_detection_score":0-100,"overall_risk":"low"|"medium"|"high","total_sources_matched":number,"sections":[{"name":"section name","originality":0-100,"ai_likelihood":0-100,"flags":["specific issue found"],"suggestions":["specific actionable fix"],"matches":[{"phrase":"exact flagged phrase","url":"","title":"potential source or pattern name","source":"detection method","snippet":"context","similarity":0-100}]}],"common_phrases":["list of cliché/template phrases found"],"recommendations":["specific actionable recommendations"]}`;
-        return await nvidiaJSON(prompt, 1024, NVIDIA_MODEL) as PlagiarismResult;
+        return await nvidiaJSON(prompt, 3072, NVIDIA_MODEL) as PlagiarismResult;
       } catch {
         return null;
       }
@@ -1145,8 +1172,20 @@ CRITICAL REQUIREMENTS:
 7. If you are not confident a paper exists, DO NOT include it. Fewer real results are better than fabricated ones.
 
 Return JSON: {"success":true,"results":[{"title":"exact real title","authors":"Real Author, A. & Real Author, B.","year":2024,"venue":"Real Venue Name","doi":"10.xxxx/real.doi","abstract":"faithful summary...","citations":number,"relevance":0-100}]}`;
-    return await nvidiaJSON(prompt, 1024);
-  } catch {
+    const raw = await nvidiaJSON(prompt, 2048);
+    let results: ScholarResult[] = [];
+    if (Array.isArray(raw)) {
+      results = raw;
+    } else if (Array.isArray(raw?.results)) {
+      results = raw.results;
+    } else if (Array.isArray(raw?.papers)) {
+      results = raw.papers;
+    } else if (Array.isArray(raw?.data)) {
+      results = raw.data;
+    }
+    return { success: true, results };
+  } catch (err) {
+    console.error("searchScholar error:", err);
     return {
       success: true, results: []
     };
