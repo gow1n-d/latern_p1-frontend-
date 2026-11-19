@@ -381,8 +381,21 @@ export function imageUrlToPng(url: string): Promise<string> {
   });
 }
 
-export async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string }): Promise<string | null> {
-  const cacheKey = diagram.type === "mermaid" ? diagram.svg || "" : diagram.imageData || "";
+export async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: string; imageData?: string; code?: string }): Promise<string | null> {
+  let svgToUse = diagram.svg;
+  if (!svgToUse && diagram.type === "mermaid" && diagram.code) {
+    try {
+      const mermaid = (await import("mermaid")).default;
+      const uniqueId = `mermaid-export-${Math.random().toString(36).substring(2, 9)}`;
+      const { svg } = await mermaid.render(uniqueId, diagram.code);
+      svgToUse = svg;
+      diagram.svg = svg;
+    } catch (e) {
+      console.warn("Failed to render Mermaid code to SVG for PNG export:", e);
+    }
+  }
+
+  const cacheKey = diagram.type === "mermaid" ? svgToUse || diagram.code || "" : diagram.imageData || "";
   if (!cacheKey) return null;
 
   if (pngCache.has(cacheKey)) {
@@ -390,9 +403,9 @@ export async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: stri
   }
 
   let pngData: string | null = null;
-  if (diagram.type === "mermaid" && diagram.svg) {
+  if (diagram.type === "mermaid" && svgToUse) {
     try {
-      pngData = await svgToPng(diagram.svg);
+      pngData = await svgToPng(svgToUse);
     } catch (e) {
       console.error("Failed to convert Mermaid SVG to PNG:", e);
     }

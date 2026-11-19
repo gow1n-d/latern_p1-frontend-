@@ -16,6 +16,7 @@ import { parseDocx, parseMultipleImages } from "@/lib/documentParser";
 import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, type SectionDiagram, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
+import MermaidBlock from "@/components/MermaidBlock";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -604,8 +605,7 @@ export default function PaperEditor() {
   };
 
   const handleGenerateDiagram = useCallback(async () => {
-    const titleContent = sections.find((s) => s.id === "title")?.content || "";
-    if (!titleContent.trim()) { toast.error("Please add a paper title first"); return; }
+    const titleContent = sections.find((s) => s.id === "title")?.content?.trim() || "Academic Research Study";
     
     setIsGeneratingDiagram(true);
     toast.info("Generating diagram...");
@@ -618,7 +618,7 @@ export default function PaperEditor() {
         results_summary: paperMeta.results_summary,
         description: currentSection?.content || ""
       });
-      if (result.success) {
+      if (result.success && (result.code || result.imageData)) {
         let diagId = Math.random().toString(36).substring(2, 9);
         const newDiag: SectionDiagram = {
           id: diagId,
@@ -628,6 +628,11 @@ export default function PaperEditor() {
           caption: result.caption || "Generated Diagram",
           width: "100%"
         };
+
+        // Pre-cache diagram PNG in background for export without blocking UI
+        if (newDiag.code || newDiag.imageData) {
+          preCacheDiagramPng(newDiag).catch(() => {});
+        }
         
         setSectionDiagrams(prev => {
           const currentList = prev[activeSection] || [];
@@ -642,10 +647,10 @@ export default function PaperEditor() {
               const textarea = textareaRef.current;
               let newContent = s.content;
               const cursorPos = lastCursorPos.current ?? textarea?.selectionStart;
-              if (cursorPos !== undefined && cursorPos !== null) {
+              if (cursorPos !== undefined && cursorPos !== null && cursorPos >= 0) {
                 newContent = s.content.substring(0, cursorPos) + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n` + s.content.substring(cursorPos);
               } else {
-                newContent = s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
+                newContent = s.content ? s.content + `\n\n![Diagram: ${newDiag.caption}](${newDiag.id})\n\n` : `![Diagram: ${newDiag.caption}](${newDiag.id})\n\n`;
               }
               return { 
                 ...s, 
@@ -2271,6 +2276,10 @@ export default function PaperEditor() {
                                       className="flex justify-center" 
                                       dangerouslySetInnerHTML={{ __html: diag.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} 
                                     />
+                                  ) : isMermaid && diag.code ? (
+                                    <div style={{ width: widthVal, maxWidth: "100%" }} className="flex justify-center">
+                                      <MermaidBlock code={diag.code} />
+                                    </div>
                                   ) : diag.imageData ? (
                                     <img 
                                       src={diag.imageData} 

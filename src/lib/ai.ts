@@ -1141,9 +1141,10 @@ Return exactly this JSON structure:
   "caption": "A concise academic figure caption describing the ${diagramType}"
 }`;
 
-    const res = await nvidiaJSON(prompt, 800) as DiagramResult;
+    const res = await nvidiaJSON(prompt, 1500) as DiagramResult;
     if (res && res.code) {
       res.code = sanitizeMermaidCode(res.code);
+      if (!res.caption) res.caption = `${params.section || "System"} Architecture Diagram`;
     }
     return res;
   } catch {

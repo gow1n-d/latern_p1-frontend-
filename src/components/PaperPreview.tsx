@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import type { PaperSection } from "@/hooks/usePapers";
 import { stripMarkdown } from "@/lib/ai";
+import MermaidBlock from "@/components/MermaidBlock";
 
 export type Author = {
   name: string;
@@ -228,6 +229,10 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
       <figure key={d.id} style={{ margin: "8px 0", breakInside: "avoid-column" as const, textAlign: "center" as const, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
         {d.type === "mermaid" && d.svg ? (
           <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: widthStyle, margin: "0 auto", overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: d.svg.replace(/<svg /i, '<svg style="max-width:100%;height:auto;" ') }} />
+        ) : d.type === "mermaid" && d.code ? (
+          <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: widthStyle, margin: "0 auto", overflow: "hidden" }}>
+            <MermaidBlock code={d.code} />
+          </div>
         ) : d.imageData ? (
           <img src={d.imageData} alt={d.caption} style={{ maxWidth: "100%", width: widthStyle, height: "auto", objectFit: "contain" as const, borderRadius: 2, display: "block", margin: "0 auto" }} />
         ) : null}
