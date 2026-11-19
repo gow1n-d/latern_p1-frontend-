@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { toast } from "sonner";
 import { generateSection, stripMarkdown } from "@/lib/ai";
 
-const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
+const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
 const NVIDIA_BASE_URL = "/api/nvidia/v1";
 const NVIDIA_MODEL = import.meta.env.VITE_NVIDIA_MODEL || "nvidia/nemotron-3.5-bolt-e4b";
 const FALLBACK_MODELS = [
