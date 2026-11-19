@@ -23,7 +23,13 @@ import { distributeAssets } from "@/lib/ai";
 // ── AI generation for report sections ──
 const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
 const NVIDIA_BASE_URL = "/api/nvidia/v1";
-const NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct";
+const NVIDIA_MODEL = import.meta.env.VITE_NVIDIA_MODEL || "nvidia/nemotron-3.5-bolt-e4b";
+const FALLBACK_MODELS = [
+  NVIDIA_MODEL,
+  "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "minimaxai/minimax-m3.1-flash",
+  "mistralai/mistral-large-4-1t-a52b",
+];
 
 function stripMarkdownReport(text: string): string {
   // Allow markdown tables and mermaid code blocks.
@@ -64,52 +70,76 @@ Do NOT output plain text if a diagram or table would better represent the data.`
     const prompt = `Write the "${params.section}" section for a ${params.templateName} titled: "${params.title}".${metaContext}${ctx}
 Write detailed, professional report content. No meta-commentary or filler. Output only the section content.`;
 
-    const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
-      body: JSON.stringify({
-        model: NVIDIA_MODEL,
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: prompt }],
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 2048,
-      }),
-    });
+    const models = [NVIDIA_MODEL, ...FALLBACK_MODELS.filter(m => m !== NVIDIA_MODEL)];
+    let lastError = "Generation failed";
 
-    if (!resp.ok || !resp.body) {
-      if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
-      const text = await resp.text();
-      let msg = "Generation failed";
+    for (const model of models) {
       try {
-        const errObj = JSON.parse(text);
-        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
-      } catch {}
-      opts.onError(msg);
-      return;
-    }
+        const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: prompt }],
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 2048,
+          }),
+        });
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+        if (!resp.ok || !resp.body) {
+          if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
+          const text = await resp.text();
+          try {
+            const errObj = JSON.parse(text);
+            lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
+          } catch {
+            lastError = `Status ${resp.status}`;
+          }
+          console.warn(`Report model ${model} failed (${resp.status}): ${lastError}. Trying fallback...`);
+          continue;
+        }
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t.startsWith("data: ")) continue;
-        const json = t.slice(6).trim();
-        if (json === "[DONE]") { opts.onDone(); return; }
-        try {
-          const c = JSON.parse(json).choices?.[0]?.delta?.content;
-          if (c) opts.onDelta(c);
-        } catch {}
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let hasContent = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith("data: ")) continue;
+            const json = t.slice(6).trim();
+            if (json === "[DONE]") { opts.onDone(); return; }
+            try {
+              const parsed = JSON.parse(json);
+              const c = parsed.choices?.[0]?.delta?.content;
+              if (c) {
+                hasContent = true;
+                opts.onDelta(c);
+              }
+            } catch {}
+          }
+        }
+
+        if (hasContent) {
+          opts.onDone();
+          return;
+        } else {
+          continue;
+        }
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : "Stream failed";
+        continue;
       }
     }
-    opts.onDone();
+
+    opts.onError(lastError);
   } catch (err) {
     opts.onError(err instanceof Error ? err.message : "Stream failed");
   }

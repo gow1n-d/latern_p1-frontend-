@@ -1,6 +1,12 @@
 const NVIDIA_API_KEY = import.meta.env.VITE_NVIDIA_API_KEY || "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";
 const NVIDIA_BASE_URL = "/api/nvidia/v1";
-const NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct";
+const NVIDIA_MODEL = import.meta.env.VITE_NVIDIA_MODEL || "nvidia/nemotron-3.5-bolt-e4b";
+const FALLBACK_MODELS = [
+  NVIDIA_MODEL,
+  "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "minimaxai/minimax-m3.1-flash",
+  "mistralai/mistral-large-4-1t-a52b",
+];
 
 import { getSystemPrompt } from './stealth/prompts';
 import { postprocess } from './stealth/postprocess';
@@ -171,81 +177,126 @@ ${dataSection}`;
 }
 
 async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 2048, systemPrompt?: string) {
-  try {
-    const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
-      body: JSON.stringify({
-        model: NVIDIA_MODEL,
-        messages: [{ role: "system", content: systemPrompt || getAcademicSystemPrompt() }, { role: "user", content: prompt }],
-        stream: true,
-        temperature: 0.7,
-        max_tokens: maxTokens,
-      }),
-    });
+  const models = [NVIDIA_MODEL, ...FALLBACK_MODELS.filter(m => m !== NVIDIA_MODEL)];
+  let lastError = "Generation failed";
 
-    if (!resp.ok || !resp.body) {
-      if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
-      const text = await resp.text();
-      let msg = "Generation failed";
-      try {
-        const errObj = JSON.parse(text);
-        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
-      } catch {}
-      opts.onError(msg);
-      return;
-    }
+  for (const model of models) {
+    try {
+      const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: systemPrompt || getAcademicSystemPrompt() }, { role: "user", content: prompt }],
+          stream: true,
+          temperature: 0.7,
+          max_tokens: maxTokens,
+        }),
+      });
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t.startsWith("data: ")) continue;
-        const json = t.slice(6).trim();
-        if (json === "[DONE]") { opts.onDone(); return; }
+      if (!resp.ok || !resp.body) {
+        if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
+        const text = await resp.text();
         try {
-          const c = JSON.parse(json).choices?.[0]?.delta?.content;
-          if (c) opts.onDelta(c);
-        } catch {}
+          const errObj = JSON.parse(text);
+          lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
+        } catch {
+          lastError = `Status ${resp.status}`;
+        }
+        console.warn(`Model ${model} failed (${resp.status}): ${lastError}. Trying fallback model...`);
+        continue;
       }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let hasReceivedAnyContent = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data: ")) continue;
+          const json = t.slice(6).trim();
+          if (json === "[DONE]") { opts.onDone(); return; }
+          try {
+            const parsed = JSON.parse(json);
+            const delta = parsed.choices?.[0]?.delta;
+            const c = delta?.content;
+            if (c) {
+              hasReceivedAnyContent = true;
+              opts.onDelta(c);
+            }
+          } catch {}
+        }
+      }
+
+      if (hasReceivedAnyContent) {
+        opts.onDone();
+        return;
+      } else {
+        console.warn(`Model ${model} returned empty content stream. Trying next model...`);
+        continue;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Stream failed";
+      console.warn(`Error streaming with model ${model}:`, err);
+      continue;
     }
-    opts.onDone();
-  } catch (err) {
-    opts.onError(err instanceof Error ? err.message : "Stream failed");
   }
+
+  opts.onError(lastError);
 }
 
 async function nvidiaJSON(prompt: string, maxTokens = 1024, modelOverride?: string): Promise<any> {
-  const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
-    body: JSON.stringify({
-      model: modelOverride || NVIDIA_MODEL,
-      messages: [{ role: "system", content: "Respond with valid JSON only. No markdown." }, { role: "user", content: prompt }],
-      temperature: 0.2,
-      max_tokens: maxTokens,
-      response_format: { type: "json_object" }
-    }),
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    let msg = "API failed";
+  const models = modelOverride 
+    ? [modelOverride, NVIDIA_MODEL, ...FALLBACK_MODELS.filter(m => m !== modelOverride && m !== NVIDIA_MODEL)]
+    : [NVIDIA_MODEL, ...FALLBACK_MODELS.filter(m => m !== NVIDIA_MODEL)];
+  let lastError = "API failed";
+
+  for (const model of models) {
     try {
-      const errObj = JSON.parse(text);
-      msg = errObj.error?.message || errObj.detail || errObj.title || msg;
-    } catch {}
-    throw new Error(msg);
+      const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: "Respond with valid JSON only. No markdown." }, { role: "user", content: prompt }],
+          temperature: 0.2,
+          max_tokens: maxTokens,
+          response_format: { type: "json_object" }
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        try {
+          const errObj = JSON.parse(text);
+          lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
+        } catch {
+          lastError = `Status ${resp.status}`;
+        }
+        console.warn(`nvidiaJSON: model ${model} failed (${resp.status}): ${lastError}. Trying next...`);
+        continue;
+      }
+
+      const data = await resp.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (content) {
+        return cleanAndParseJSON(content);
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "JSON parsing failed";
+      console.warn(`nvidiaJSON error with model ${model}:`, err);
+      continue;
+    }
   }
-  const data = await resp.json();
-  return cleanAndParseJSON(data.choices?.[0]?.message?.content || "{}");
+
+  throw new Error(lastError);
 }
 
 export async function distributeAssets(
@@ -469,33 +520,48 @@ export async function humanizeText(
   ) + `\n\nTEXT TO REWRITE:\n"""\n${params.content.slice(0, 3000)}\n"""`;
 
   try {
-    // 1. Fetch full AI generated rewrite (non-streaming)
-    const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
-      body: JSON.stringify({
-        model: "meta/llama-3.2-90b-vision-instruct", // Upgraded to 90B for much higher accuracy and instruction adherence
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-        temperature: 0.95, // Slightly higher temperature for more human-like randomness
-        max_tokens: 2048,
-      }),
-    });
+    // 1. Fetch full AI generated rewrite (non-streaming with fallback)
+    const models = [NVIDIA_MODEL, ...FALLBACK_MODELS.filter(m => m !== NVIDIA_MODEL)];
+    let rawAiText = "";
+    let lastError = "Generation failed";
 
-    if (!resp.ok) {
-      if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
-      const text = await resp.text();
-      let msg = "Generation failed";
+    for (const model of models) {
       try {
-        const errObj = JSON.parse(text);
-        msg = errObj.error?.message || errObj.detail || errObj.title || msg;
-      } catch {}
-      opts.onError(msg);
-      return;
+        const resp = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${NVIDIA_API_KEY}` },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            stream: false,
+            temperature: 0.95,
+            max_tokens: 2048,
+          }),
+        });
+
+        if (!resp.ok) {
+          if (resp.status === 429) { opts.onError("Rate limit. Wait and retry."); return; }
+          const text = await resp.text();
+          try {
+            const errObj = JSON.parse(text);
+            lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
+          } catch {}
+          continue;
+        }
+
+        const data = await resp.json();
+        rawAiText = data.choices?.[0]?.message?.content || "";
+        if (rawAiText) break;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : "Fetch failed";
+        continue;
+      }
     }
 
-    const data = await resp.json();
-    const rawAiText = data.choices?.[0]?.message?.content || "";
+    if (!rawAiText) {
+      opts.onError(lastError);
+      return;
+    }
     
     // 2. Run it through the deterministic anti-detection engine
     const processedText = postprocess(rawAiText, { style: 'academic', aggressiveSynonyms: true });
@@ -670,8 +736,7 @@ ${fullText}
 
 Return ONLY valid JSON in this exact format:
 {"success":true,"originality_score":0-100,"ai_detection_score":0-100,"overall_risk":"low"|"medium"|"high","total_sources_matched":number,"sections":[{"name":"section name","originality":0-100,"ai_likelihood":0-100,"flags":["specific issue found"],"suggestions":["specific actionable fix"],"matches":[{"phrase":"exact flagged phrase","url":"","title":"potential source or pattern name","source":"detection method","snippet":"context","similarity":0-100}]}],"common_phrases":["list of cliché/template phrases found"],"recommendations":["specific actionable recommendations"]}`;
-        // Upgraded to 90B model for extreme accuracy in plagiarism/AI detection
-        return await nvidiaJSON(prompt, 1024, "meta/llama-3.2-90b-vision-instruct") as PlagiarismResult;
+        return await nvidiaJSON(prompt, 1024, NVIDIA_MODEL) as PlagiarismResult;
       } catch {
         return null;
       }
