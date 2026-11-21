@@ -6,7 +6,7 @@ import {
   Underline, AlignLeft, List, Quote, Type, Loader2, CheckCircle2,
   Copy, RotateCcw, Eye, Edit3, Search, Shield, User, GraduationCap,
   Moon, Sun, Wand2, Image as ImageIcon, Menu, ChevronRight, PanelLeftClose, Upload, Plus, Trash2, FileUp,
-  Coffee, Flame, Zap, Smile, RefreshCw
+  Coffee, Flame, Zap, Smile, RefreshCw, ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -329,6 +329,7 @@ export default function PaperEditor() {
   const [scholarQuery, setScholarQuery] = useState("");
   const [scholarResults, setScholarResults] = useState<ScholarResult[]>([]);
   const [isSearchingScholar, setIsSearchingScholar] = useState(false);
+  const [addedRefTitles, setAddedRefTitles] = useState<Set<string>>(new Set());
 
   const [paperMeta, setPaperMeta] = useState({ domain: "", methodology: "", results_summary: "" });
   const [journalSearch, setJournalSearch] = useState("");
@@ -1385,13 +1386,31 @@ export default function PaperEditor() {
     setIsCheckingPlagiarism(false);
   };
 
+  // Open scholar modal with intelligent pre-fill
+  const openScholarModal = (initialQuery?: string) => {
+    setShowScholar(true);
+    const paperTitle = sections.find(s => s.id === "title")?.content?.trim();
+    const q = initialQuery || scholarQuery || paperTitle || paperMeta.domain || "";
+    if (q) {
+      setScholarQuery(q);
+      if (scholarResults.length === 0) {
+        handleScholarSearch(q);
+      }
+    }
+  };
+
   // Google Scholar search
-  const handleScholarSearch = async () => {
-    if (!scholarQuery.trim()) return;
+  const handleScholarSearch = async (customQuery?: string) => {
+    const q = (typeof customQuery === "string" ? customQuery : scholarQuery).trim();
+    if (!q) {
+      toast.info("Please enter a research topic or paper title to search.");
+      return;
+    }
+    if (typeof customQuery === "string") setScholarQuery(customQuery);
     setIsSearchingScholar(true);
     try {
       const title = sections.find(s => s.id === "title")?.content;
-      const result = await searchScholar({ query: scholarQuery, journal: selectedJournal, paperTitle: title });
+      const result = await searchScholar({ query: q, journal: selectedJournal, paperTitle: title });
       if (result.results && result.results.length > 0) {
         setScholarResults(result.results);
       } else {
@@ -1405,17 +1424,86 @@ export default function PaperEditor() {
     }
   };
 
-  const addReferenceFromScholar = (ref: ScholarResult) => {
-    const formattedKey = Object.keys(ref).find(k => k.startsWith("formatted_"));
-    const formatted = formattedKey ? ref[formattedKey] : `${ref.authors}, "${ref.title}," ${ref.venue}, ${ref.year}.`;
-    const refSectionId = sections.find(s => ["references", "works-cited", "bibliography", "reference-list"].includes(s.id))?.id;
-    if (!refSectionId) { toast.error("No references section found"); return; }
+  const addReferenceFromScholar = (ref: ScholarResult): { nextNum: number; citation: string } => {
+    // 1. Locate references section by ID or label
+    let refSection = sections.find(s => 
+      ["references", "works-cited", "bibliography", "reference-list", "references and notes"].includes(s.id) ||
+      s.label.toLowerCase().includes("reference") ||
+      s.label.toLowerCase().includes("bibliography")
+    );
+
+    // If missing, auto-create references section at the end of paper
+    if (!refSection) {
+      refSection = { id: "references", label: "References", content: "" };
+      setSections(prev => [...prev, refSection!]);
+    }
+
+    const currentContent = refSection.content || "";
+
+    // 2. Determine sequential citation number [X]
+    const matches = [...currentContent.matchAll(/\[(\d+)\]/g)];
+    let nextNum = 1;
+    if (matches.length > 0) {
+      const nums = matches.map(m => parseInt(m[1], 10)).filter(n => !isNaN(n));
+      if (nums.length > 0) nextNum = Math.max(...nums) + 1;
+    } else if (currentContent.trim()) {
+      nextNum = currentContent.trim().split("\n").filter(l => l.trim().length > 0).length + 1;
+    }
+
+    // 3. Format citation cleanly with bracketed number
+    const citationBody = ref.formatted_citation 
+      ? ref.formatted_citation.replace(/^\[\d+\]\s*/, "") 
+      : `${ref.authors}, "${ref.title}," ${ref.venue}, ${ref.year}.${ref.doi ? ` DOI: ${ref.doi}` : ""}`;
+    const formattedEntry = `[${nextNum}] ${citationBody}`;
+
+    // Prevent duplicate addition
+    if (currentContent.toLowerCase().includes(ref.title.toLowerCase().slice(0, 30))) {
+      setAddedRefTitles(prev => new Set(prev).add(ref.title));
+      toast.info(`"${ref.title.slice(0, 40)}..." is already in your References section.`);
+      return { nextNum, citation: `[${nextNum}]` };
+    }
+
     setSections(prev => {
-      const updated = prev.map(s => s.id === refSectionId ? { ...s, content: s.content ? s.content + "\n" + formatted : formatted } : s);
+      const exists = prev.some(s => s.id === refSection!.id);
+      let updated: PaperSection[];
+      if (exists) {
+        updated = prev.map(s => s.id === refSection!.id 
+          ? { ...s, content: s.content ? s.content.trimEnd() + "\n" + formattedEntry : formattedEntry } 
+          : s
+        );
+      } else {
+        updated = [...prev, { ...refSection!, content: formattedEntry }];
+      }
       autoSave(updated);
       return updated;
     });
-    toast.success("Reference added!");
+
+    setAddedRefTitles(prev => new Set(prev).add(ref.title));
+    toast.success(`Reference [${nextNum}] added to References section!`);
+    return { nextNum, citation: `[${nextNum}]` };
+  };
+
+  const insertCitationInText = (ref: ScholarResult) => {
+    const { nextNum } = addReferenceFromScholar(ref);
+    const citationMark = `[${nextNum}]`;
+    // If active section is not references, append inline citation mark
+    if (activeSection && activeSection !== "references" && activeSection !== "bibliography") {
+      setSections(prev => {
+        const updated = prev.map(s => {
+          if (s.id === activeSection) {
+            const trimmed = s.content ? s.content.trimEnd() : "";
+            return { ...s, content: trimmed ? `${trimmed} ${citationMark}` : citationMark };
+          }
+          return s;
+        });
+        autoSave(updated);
+        return updated;
+      });
+      toast.success(`Citation ${citationMark} inserted into active section & References!`);
+    } else {
+      navigator.clipboard.writeText(citationMark);
+      toast.success(`Citation ${citationMark} copied to clipboard! Paste it anywhere in your text.`);
+    }
   };
 
   // AI Fix for validation issues
@@ -1981,7 +2069,7 @@ export default function PaperEditor() {
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={handleCheckPlagiarism} disabled={isCheckingPlagiarism}>
             {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Check Plagiarism
           </Button>
-          <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowScholar(true)}>
+          <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => openScholarModal()}>
             <GraduationCap className="h-4 w-4" /> Google Scholar
           </Button>
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => setShowAuthorModal(true)}>
@@ -2450,7 +2538,7 @@ export default function PaperEditor() {
                 <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); handleCheckPlagiarism(); }} disabled={isCheckingPlagiarism}>
                   {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Check Plagiarism
                 </Button>
-                <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); setShowScholar(true); }}>
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); openScholarModal(); }}>
                   <GraduationCap className="h-4 w-4" /> Google Scholar
                 </Button>
                 <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); setShowAuthorModal(true); }}>
@@ -2646,58 +2734,203 @@ export default function PaperEditor() {
         {showScholar && (
           <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.div className="bg-card rounded-2xl border border-border shadow-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            <motion.div className="bg-card rounded-2xl border border-border shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden"
               initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}>
-              <div className="flex items-center justify-between p-5 border-b border-border">
-                <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
-                  <GraduationCap className="h-5 w-5 text-accent" /> Google Scholar Search
-                </h3>
-                <button onClick={() => { setShowScholar(false); setScholarResults([]); setScholarQuery(""); }} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+              <div className="flex items-center justify-between p-5 border-b border-border bg-muted/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-accent/10 border border-accent/20 text-accent">
+                    <GraduationCap className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-base font-bold text-foreground flex items-center gap-2">
+                      Google Scholar Reference Finder
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold uppercase">
+                        {selectedJournal}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">Find and index verified peer-reviewed research papers directly into your bibliography</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`https://scholar.google.com/scholar?q=${encodeURIComponent(scholarQuery || sections.find(s => s.id === "title")?.content || "academic paper")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hidden sm:inline-flex items-center gap-1.5 text-xs text-accent hover:underline px-2.5 py-1.5 rounded-lg bg-accent/10 border border-accent/20 transition-colors hover:bg-accent/20"
+                    title="Search live on scholar.google.com"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Live Scholar Tab
+                  </a>
+                  <button onClick={() => { setShowScholar(false); }} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition-colors">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
-              <div className="p-5">
-                <div className="flex gap-2 mb-4">
-                  <input
-                    className="flex-1 rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="Search for papers, topics, or keywords..."
-                    value={scholarQuery}
-                    onChange={(e) => setScholarQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleScholarSearch(); }}
-                  />
-                  <Button variant="hero" onClick={handleScholarSearch} disabled={isSearchingScholar || !scholarQuery.trim()}>
+
+              <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      className="w-full rounded-xl border border-input bg-background pl-4 pr-10 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                      placeholder="Search title, research question, keyword, or author..."
+                      value={scholarQuery}
+                      onChange={(e) => setScholarQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleScholarSearch(); }}
+                    />
+                    {scholarQuery && (
+                      <button
+                        onClick={() => setScholarQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-1"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <Button variant="hero" onClick={() => handleScholarSearch()} disabled={isSearchingScholar || !scholarQuery.trim()} className="gap-2 shrink-0">
                     {isSearchingScholar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    <span>Search</span>
                   </Button>
                 </div>
 
-                {isSearchingScholar && (
-                  <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-accent" /></div>
-                )}
+                {/* Quick Suggestion Chips */}
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="text-muted-foreground font-medium mr-1">Suggestions:</span>
+                  {sections.find(s => s.id === "title")?.content?.trim() && (
+                    <button
+                      onClick={() => handleScholarSearch(sections.find(s => s.id === "title")!.content!.trim())}
+                      className="px-2.5 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-accent/10 hover:border-accent/30 border border-transparent transition-all max-w-[200px] truncate"
+                      title={sections.find(s => s.id === "title")?.content}
+                    >
+                      📄 Title
+                    </button>
+                  )}
+                  {paperMeta.domain && (
+                    <button
+                      onClick={() => handleScholarSearch(`${paperMeta.domain} state of the art survey`)}
+                      className="px-2.5 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-accent/10 hover:border-accent/30 border border-transparent transition-all"
+                    >
+                      🌐 {paperMeta.domain}
+                    </button>
+                  )}
+                  {paperMeta.methodology && (
+                    <button
+                      onClick={() => handleScholarSearch(`${paperMeta.methodology.slice(0, 30)} benchmark methodology`)}
+                      className="px-2.5 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-accent/10 hover:border-accent/30 border border-transparent transition-all"
+                    >
+                      ⚙️ Methodology
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleScholarSearch("novel empirical evaluation benchmark datasets")}
+                    className="px-2.5 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-accent/10 hover:border-accent/30 border border-transparent transition-all"
+                  >
+                    📊 Benchmarks
+                  </button>
+                </div>
 
-                {scholarResults.length > 0 && (
-                  <div className="space-y-3">
-                    {scholarResults.map((ref, i) => (
-                      <div key={i} className="rounded-lg border border-border p-4 hover:bg-muted/50 transition-colors">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm text-foreground leading-snug">{ref.title}</h4>
-                            <p className="text-xs text-muted-foreground mt-1">{ref.authors} — {ref.year}</p>
-                            <p className="text-xs text-muted-foreground italic">{ref.venue}</p>
-                            {ref.abstract && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{ref.abstract}</p>}
-                            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                              {ref.citations > 0 && <span>📊 {ref.citations} citations</span>}
-                              {ref.relevance > 0 && <span>🎯 {ref.relevance}% relevant</span>}
-                            </div>
-                          </div>
-                          <Button variant="outline" size="sm" className="shrink-0 text-xs" onClick={() => addReferenceFromScholar(ref)}>
-                            + Add
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                {isSearchingScholar && (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-accent" />
+                    <p className="text-sm text-muted-foreground font-medium">Indexing real peer-reviewed papers matching your topic...</p>
                   </div>
                 )}
 
-                {!isSearchingScholar && scholarResults.length === 0 && scholarQuery && (
-                  <div className="text-center py-8 text-sm text-muted-foreground">No results yet. Try searching for a topic.</div>
+                {scholarResults.length > 0 && !isSearchingScholar && (
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                      <span>Found {scholarResults.length} verifiable academic sources</span>
+                      <span>Targeting {selectedJournal.toUpperCase()} format</span>
+                    </div>
+                    {scholarResults.map((ref, i) => {
+                      const isAlreadyAdded = addedRefTitles.has(ref.title) || 
+                        sections.some(s => 
+                          (s.id === "references" || s.id === "bibliography" || s.label.toLowerCase().includes("reference")) && 
+                          s.content && s.content.toLowerCase().includes(ref.title.toLowerCase().slice(0, 30))
+                        );
+
+                      return (
+                        <div key={i} className={`rounded-xl border p-4 transition-all ${isAlreadyAdded ? "border-emerald-500/30 bg-emerald-500/5" : "border-border hover:border-border/80 hover:bg-muted/30"}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-sm text-foreground leading-snug">{ref.title}</h4>
+                              <p className="text-xs text-muted-foreground mt-1 font-medium">
+                                <span className="text-foreground/80">{ref.authors}</span> &bull; {ref.year}
+                              </p>
+                              <p className="text-xs text-accent/80 italic mt-0.5">{ref.venue}</p>
+                              {ref.abstract && (
+                                <p className="text-xs text-muted-foreground/90 mt-2 line-clamp-2 leading-relaxed bg-muted/40 p-2 rounded-lg border border-border/40">
+                                  {ref.abstract}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground flex-wrap">
+                                {ref.citations > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-muted font-medium">
+                                    📊 {ref.citations} citations
+                                  </span>
+                                )}
+                                {ref.relevance > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent/10 text-accent font-medium">
+                                    🎯 {ref.relevance}% relevant
+                                  </span>
+                                )}
+                                {ref.doi && (
+                                  <a
+                                    href={ref.doi.startsWith("http") ? ref.doi : `https://doi.org/${ref.doi.replace(/^doi:\s*/i, "")}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:underline"
+                                  >
+                                    <ExternalLink className="h-3 w-3" /> DOI: {ref.doi.slice(0, 20)}...
+                                  </a>
+                                )}
+                                <a
+                                  href={`https://scholar.google.com/scholar?q=${encodeURIComponent(ref.title)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline ml-auto"
+                                >
+                                  <GraduationCap className="h-3.5 w-3.5 text-accent" /> View on Scholar ↗
+                                </a>
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0">
+                              {isAlreadyAdded ? (
+                                <Button variant="outline" size="sm" className="text-xs gap-1.5 border-emerald-500/40 text-emerald-600 bg-emerald-500/10 cursor-default">
+                                  <Check className="h-3.5 w-3.5" /> Added
+                                </Button>
+                              ) : (
+                                <Button variant="hero" size="sm" className="text-xs gap-1.5" onClick={() => addReferenceFromScholar(ref)}>
+                                  <Plus className="h-3.5 w-3.5" /> Add Ref
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs gap-1 text-muted-foreground hover:text-foreground"
+                                onClick={() => insertCitationInText(ref)}
+                                title="Insert sequential citation [X] into active section or copy"
+                              >
+                                <Quote className="h-3 w-3 text-accent" /> Cite In-Text
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!isSearchingScholar && scholarResults.length === 0 && (
+                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-border bg-muted/10 space-y-3">
+                    <GraduationCap className="h-10 w-10 text-muted-foreground/40 mx-auto" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">No papers displayed yet</h4>
+                      <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1">
+                        Search for a topic, keyword, or author above, or click one of the quick suggestions to find real papers formatted for {selectedJournal.toUpperCase()}.
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
             </motion.div>
