@@ -78,7 +78,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-hero flex items-center justify-center p-6 relative">
+    <div className="min-h-screen bg-hero flex items-center justify-center p-4 sm:p-6 relative">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 h-72 w-72 rounded-full bg-accent/10 blur-[100px]" />
         <div className="absolute bottom-10 right-20 h-64 w-64 rounded-full bg-accent/5 blur-[80px]" />
@@ -97,13 +97,13 @@ export default function AuthPage() {
           <span className="font-display text-2xl font-bold text-primary-foreground tracking-tight">PaperForge</span>
         </Link>
 
-        <div className="rounded-2xl border border-border/40 bg-card/95 backdrop-blur-md p-8 shadow-2xl space-y-6">
+        <div className="rounded-2xl border border-border/40 bg-card/95 backdrop-blur-md p-5 sm:p-8 shadow-2xl space-y-5">
           {/* Sign In vs Sign Up Tabs */}
           <div className="flex rounded-xl bg-muted p-1 border border-border/50">
             <button
               type="button"
               onClick={() => setIsSignUp(false)}
-              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
                 !isSignUp
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
@@ -114,7 +114,7 @@ export default function AuthPage() {
             <button
               type="button"
               onClick={() => setIsSignUp(true)}
-              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
                 isSignUp
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
@@ -125,13 +125,13 @@ export default function AuthPage() {
           </div>
 
           <div className="text-center">
-            <h1 className="font-display text-2xl font-bold text-foreground mb-1">
+            <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground mb-1">
               {isSignUp ? "Create Your Account" : "Welcome Back"}
             </h1>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-xs leading-relaxed">
               {isSignUp
                 ? "Start drafting and indexing publication-grade research papers"
-                : "Sign in to access your papers, literature reviews, and reports"}
+                : "Sign in across laptop, mobile, or tablet to access your research"}
             </p>
           </div>
 
@@ -144,7 +144,7 @@ export default function AuthPage() {
                   placeholder="Full Name (e.g., Dr. Jane Doe)"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                  className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all min-h-[44px]"
                 />
               </div>
             )}
@@ -152,27 +152,34 @@ export default function AuthPage() {
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all min-h-[44px]"
               />
             </div>
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type={showPassword ? "text" : "password"}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="Password (minimum 6 characters)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={isSignUp ? "new-password" : "current-password"}
-                className="w-full rounded-xl border border-input bg-background pl-10 pr-11 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                className="w-full rounded-xl border border-input bg-background pl-10 pr-11 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all min-h-[44px]"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 touch-manipulation"
                 title={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -181,14 +188,14 @@ export default function AuthPage() {
 
             {!isSignUp && (
               <div className="flex items-center justify-between text-xs pt-0.5">
-                <span className="text-muted-foreground">Always works offline & online</span>
+                <span className="text-muted-foreground text-[11px]">Instant access across devices</span>
                 <Link to="/forgot-password" className="text-accent hover:underline font-medium">
                   Forgot password?
                 </Link>
               </div>
             )}
 
-            <Button variant="hero" className="w-full py-3 text-sm font-semibold gap-2 shadow-md" disabled={loading}>
+            <Button variant="hero" className="w-full py-3 text-sm font-semibold gap-2 shadow-md min-h-[44px]" disabled={loading}>
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

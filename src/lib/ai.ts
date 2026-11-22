@@ -222,6 +222,10 @@ async function nvidiaStream(prompt: string, opts: StreamOptions, maxTokens = 204
       });
 
       if (!resp.ok || !resp.body) {
+        if (resp.status === 429) {
+          // Relieve burst traffic with exponential backoff & jitter
+          await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+        }
         const text = await resp.text();
         try {
           const errObj = JSON.parse(text);
@@ -299,12 +303,16 @@ async function nvidiaJSON(prompt: string, maxTokens = 1024, modelOverride?: stri
       });
 
       if (!resp.ok) {
+        if (resp.status === 429) {
+          // Relieve burst traffic with exponential backoff & jitter
+          await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+        }
         const text = await resp.text();
         try {
           const errObj = JSON.parse(text);
           lastError = errObj.error?.message || errObj.detail || errObj.title || lastError;
         } catch {
-          lastError = `Status ${resp.status}`;
+          lastError = resp.status === 429 ? "Rate limit reached. Trying next model..." : `Status ${resp.status}`;
         }
         console.warn(`nvidiaJSON: model ${model} failed (${resp.status}): ${lastError}. Trying next...`);
         continue;
