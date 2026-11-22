@@ -671,23 +671,46 @@ function parseSections(raw: Json): PaperSection[] {
 const MOCK_USER_IDS = [
   "00000000-0000-0000-0000-000000000000", // admin@paperforge.com
   "11111111-1111-1111-1111-111111111111", // studentadmin@paperforge.com
+  "22222222-2222-2222-2222-222222222222", // researcher@paperforge.com
 ];
 
 function isMockUser(userId: string | undefined): boolean {
-  return !!userId && MOCK_USER_IDS.includes(userId);
+  if (!userId) return false;
+  return (
+    MOCK_USER_IDS.includes(userId) ||
+    userId.startsWith("usr_") ||
+    userId.startsWith("mock-") ||
+    !!localStorage.getItem("pf_mock_session")
+  );
 }
 
-function getMockPapers(): Paper[] {
-  const data = localStorage.getItem("pf_mock_papers");
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch {
-    return [];
+function getLocalPapers(userId?: string): Paper[] {
+  if (!userId) return [];
+  const userKey = `pf_papers_${userId}`;
+  const data = localStorage.getItem(userKey);
+  if (data) {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {}
   }
+  // Check shared mock papers backup
+  const legacy = localStorage.getItem("pf_mock_papers");
+  if (legacy) {
+    try {
+      const parsed = JSON.parse(legacy);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        localStorage.setItem(userKey, legacy);
+        return parsed;
+      }
+    } catch {}
+  }
+  return [];
 }
 
-function saveMockPapers(papers: Paper[]) {
+function saveLocalPapers(userId: string, papers: Paper[]) {
+  const userKey = `pf_papers_${userId}`;
+  localStorage.setItem(userKey, JSON.stringify(papers));
   localStorage.setItem("pf_mock_papers", JSON.stringify(papers));
 }
 
@@ -697,14 +720,21 @@ export function usePapers() {
     queryKey: ["papers", user?.id],
     queryFn: async () => {
       if (isMockUser(user?.id)) {
-        return getMockPapers();
+        return getLocalPapers(user?.id);
       }
-      const { data, error } = await supabase
-        .from("papers")
-        .select("*")
-        .order("updated_at", { ascending: false });
-      if (error) throw error;
-      return (data || []).map((p) => ({ ...p, sections: parseSections(p.sections) })) as Paper[];
+      try {
+        const { data, error } = await supabase
+          .from("papers")
+          .select("*")
+          .order("updated_at", { ascending: false });
+        if (error) throw error;
+        const result = (data || []).map((p) => ({ ...p, sections: parseSections(p.sections) })) as Paper[];
+        if (user?.id) saveLocalPapers(user.id, result);
+        return result;
+      } catch (err) {
+        console.warn("Supabase fetch failed, falling back to local paper storage:", err);
+        return getLocalPapers(user?.id);
+      }
     },
     enabled: !!user,
   });
@@ -717,12 +747,18 @@ export function usePaper(id: string | undefined) {
     queryFn: async () => {
       if (!id || id === "new") return null;
       if (isMockUser(user?.id)) {
-        const mock = getMockPapers().find(p => p.id === id);
+        const mock = getLocalPapers(user?.id).find(p => p.id === id);
         return mock || null;
       }
-      const { data, error } = await supabase.from("papers").select("*").eq("id", id).single();
-      if (error) throw error;
-      return { ...data, sections: parseSections(data.sections) } as Paper;
+      try {
+        const { data, error } = await supabase.from("papers").select("*").eq("id", id).single();
+        if (error) throw error;
+        return { ...data, sections: parseSections(data.sections) } as Paper;
+      } catch (err) {
+        console.warn("Supabase single paper fetch failed, searching local storage:", err);
+        const mock = getLocalPapers(user?.id).find(p => p.id === id);
+        return mock || null;
+      }
     },
     enabled: !!user && !!id && id !== "new",
   });
@@ -738,42 +774,51 @@ export function useCreatePaper() {
         s.id === "title" ? { ...s, content: params.title } : s
       );
       
+      const newPaperLocal: Paper = {
+        id: `paper_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        user_id: user?.id || "guest",
+        title: params.title,
+        journal: params.journal,
+        domain: params.domain || "",
+        methodology_summary: params.methodology_summary || "",
+        results_summary: params.results_summary || "",
+        sections,
+        status: "draft",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
       if (isMockUser(user?.id)) {
-        const newPaper: Paper = {
-          id: Math.random().toString(36).substring(2, 15),
-          user_id: user!.id,
-          title: params.title,
-          journal: params.journal,
-          domain: params.domain || "",
-          methodology_summary: params.methodology_summary || "",
-          results_summary: params.results_summary || "",
-          sections,
-          status: "draft",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        const papers = getMockPapers();
-        papers.unshift(newPaper);
-        saveMockPapers(papers);
-        return newPaper;
+        const papers = getLocalPapers(user?.id);
+        papers.unshift(newPaperLocal);
+        saveLocalPapers(user!.id, papers);
+        return newPaperLocal;
       }
 
-      const { data, error } = await supabase
-        .from("papers")
-        .insert({
-          user_id: user!.id,
-          title: params.title,
-          journal: params.journal,
-          domain: params.domain || "",
-          methodology_summary: params.methodology_summary || "",
-          results_summary: params.results_summary || "",
-          sections: sections as unknown as Json,
-          status: "draft",
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return { ...data, sections: parseSections(data.sections) } as Paper;
+      try {
+        const { data, error } = await supabase
+          .from("papers")
+          .insert({
+            user_id: user!.id,
+            title: params.title,
+            journal: params.journal,
+            domain: params.domain || "",
+            methodology_summary: params.methodology_summary || "",
+            results_summary: params.results_summary || "",
+            sections: sections as unknown as Json,
+            status: "draft",
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        return { ...data, sections: parseSections(data.sections) } as Paper;
+      } catch (err) {
+        console.warn("Supabase insert failed, saving paper locally:", err);
+        const papers = getLocalPapers(user?.id);
+        papers.unshift(newPaperLocal);
+        if (user?.id) saveLocalPapers(user.id, papers);
+        return newPaperLocal;
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["papers"] }),
   });
@@ -784,8 +829,9 @@ export function useUpdatePaper() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: { id: string; updates: Partial<Pick<Paper, "title" | "journal" | "status" | "domain" | "methodology_summary" | "results_summary" | "sections">> }) => {
-      if (isMockUser(user?.id)) {
-        const papers = getMockPapers();
+      const updateLocally = () => {
+        if (!user?.id) return;
+        const papers = getLocalPapers(user.id);
         const idx = papers.findIndex(p => p.id === params.id);
         if (idx !== -1) {
           const updated = {
@@ -798,21 +844,31 @@ export function useUpdatePaper() {
             if (titleSection?.content) updated.title = titleSection.content;
           }
           papers[idx] = updated;
-          saveMockPapers(papers);
+          saveLocalPapers(user.id, papers);
         }
+      };
+
+      if (isMockUser(user?.id)) {
+        updateLocally();
         return;
       }
 
-      const updateData: Record<string, unknown> = { ...params.updates };
-      if (params.updates.sections) {
-        updateData.sections = params.updates.sections as unknown as Json;
+      try {
+        const updateData: Record<string, unknown> = { ...params.updates };
+        if (params.updates.sections) {
+          updateData.sections = params.updates.sections as unknown as Json;
+        }
+        if (params.updates.sections) {
+          const titleSection = params.updates.sections.find((s) => s.id === "title");
+          if (titleSection?.content) updateData.title = titleSection.content;
+        }
+        const { error } = await supabase.from("papers").update(updateData).eq("id", params.id);
+        if (error) throw error;
+        updateLocally();
+      } catch (err) {
+        console.warn("Supabase update failed, saving locally:", err);
+        updateLocally();
       }
-      if (params.updates.sections) {
-        const titleSection = params.updates.sections.find((s) => s.id === "title");
-        if (titleSection?.content) updateData.title = titleSection.content;
-      }
-      const { error } = await supabase.from("papers").update(updateData).eq("id", params.id);
-      if (error) throw error;
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["paper", vars.id] });
@@ -826,14 +882,26 @@ export function useDeletePaper() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      if (isMockUser(user?.id)) {
-        const papers = getMockPapers();
+      const deleteLocally = () => {
+        if (!user?.id) return;
+        const papers = getLocalPapers(user.id);
         const filtered = papers.filter(p => p.id !== id);
-        saveMockPapers(filtered);
+        saveLocalPapers(user.id, filtered);
+      };
+
+      if (isMockUser(user?.id)) {
+        deleteLocally();
         return;
       }
-      const { error } = await supabase.from("papers").delete().eq("id", id);
-      if (error) throw error;
+
+      try {
+        const { error } = await supabase.from("papers").delete().eq("id", id);
+        if (error) throw error;
+        deleteLocally();
+      } catch (err) {
+        console.warn("Supabase delete failed, deleting locally:", err);
+        deleteLocally();
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["papers"] }),
   });

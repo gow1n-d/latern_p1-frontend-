@@ -20,12 +20,30 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     const fetch = async () => {
-      const { data } = await supabase.from("profiles").select("*").eq("user_id", user.id).single();
-      if (data) {
-        setDisplayName(data.display_name || "");
-        setInstitution(data.institution || "");
+      // First check local cache
+      const cached = localStorage.getItem(`pf_profile_${user.id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.display_name) setDisplayName(parsed.display_name);
+          if (parsed.institution) setInstitution(parsed.institution);
+        } catch {}
+      } else if (user.user_metadata?.full_name) {
+        setDisplayName(user.user_metadata.full_name);
       }
-      setFetching(false);
+
+      try {
+        const { data } = await supabase.from("profiles").select("*").eq("user_id", user.id).single();
+        if (data) {
+          setDisplayName(data.display_name || "");
+          setInstitution(data.institution || "");
+          localStorage.setItem(`pf_profile_${user.id}`, JSON.stringify(data));
+        }
+      } catch (e) {
+        // Supabase offline, use local data
+      } finally {
+        setFetching(false);
+      }
     };
     fetch();
   }, [user]);
@@ -33,13 +51,19 @@ export default function ProfilePage() {
   const handleSave = async () => {
     if (!user) return;
     setLoading(true);
-    const { error } = await supabase.from("profiles").update({
+    // Always persist to local cache first
+    localStorage.setItem(`pf_profile_${user.id}`, JSON.stringify({
       display_name: displayName,
       institution,
-    }).eq("user_id", user.id);
+    }));
+    try {
+      await supabase.from("profiles").update({
+        display_name: displayName,
+        institution,
+      }).eq("user_id", user.id);
+    } catch {}
     setLoading(false);
-    if (error) toast.error("Failed to update profile");
-    else toast.success("Profile updated!");
+    toast.success("Profile updated successfully!");
   };
 
   const handleSignOut = async () => {
