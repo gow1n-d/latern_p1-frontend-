@@ -13,7 +13,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useParams } from "react-router-dom";
 import { generateSection, aiAssist, agenticAiAssist, humanizeText, enhanceUserData, stripMarkdown, validateFormat, checkPlagiarism, searchScholar, generateDiagram, distributeAssets, type ValidationResult, type PlagiarismResult, type ScholarResult, type DiagramResult } from "@/lib/ai";
 import { parseDocx, parseMultipleImages } from "@/lib/documentParser";
-import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng } from "@/lib/export";
+import { exportToPDF, exportToText, exportToLaTeX, exportToWord, buildTextContent, buildLaTeXContent, preCacheDiagramPng, ensurePng } from "@/lib/export";
 import { usePaper, useCreatePaper, useUpdatePaper, DEFAULT_SECTIONS, type PaperSection, type SectionDiagram, getSectionsForFormat } from "@/hooks/usePapers";
 import PaperPreview from "@/components/PaperPreview";
 import MermaidBlock from "@/components/MermaidBlock";
@@ -634,6 +634,21 @@ export default function PaperEditor() {
         if (newDiag.code || newDiag.imageData) {
           preCacheDiagramPng(newDiag).catch(() => {});
         }
+
+        // shortcut: immediately convert Mermaid code to PNG image so it is accessible as a generated image
+        if (newDiag.type === "mermaid" && newDiag.code) {
+          ensurePng(newDiag).then((png) => {
+            if (png) {
+              setSectionDiagrams(prev => {
+                const list = prev[activeSection] || [];
+                return {
+                  ...prev,
+                  [activeSection]: list.map(d => d.id === diagId ? { ...d, imageData: png } : d)
+                };
+              });
+            }
+          }).catch(() => {});
+        }
         
         setSectionDiagrams(prev => {
           const currentList = prev[activeSection] || [];
@@ -675,6 +690,27 @@ export default function PaperEditor() {
       setIsGeneratingDiagram(false);
     }
   }, [activeSection, sections, currentSection, paperMeta, autoSave]);
+
+  // Download Mermaid diagram as a generated PNG image
+  const handleDownloadDiagramPng = useCallback(async (diag: SectionDiagram) => {
+    try {
+      toast.info("Generating image from diagram...");
+      const png = await ensurePng(diag);
+      if (!png) {
+        toast.error("Could not convert diagram to image");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = png;
+      a.download = `${diag.caption || "diagram"}.png`.replace(/[^a-zA-Z0-9_-]/g, "_");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success("Diagram image downloaded! 📊");
+    } catch {
+      toast.error("Failed to download diagram image");
+    }
+  }, []);
 
   const handleGenerateSection = useCallback(async () => {
     const titleContent = sections.find((s) => s.id === "title")?.content || "";
@@ -2220,8 +2256,8 @@ export default function PaperEditor() {
                 {isGenerating ? "Generating..." : "AI Generate"}
               </Button>
             )}
-            {activeSection === "methodology" && (
-              <Button variant="ghost" size="sm" className="gap-2 text-blue-500" onClick={handleGenerateDiagram} disabled={isBusy}>
+            {!["title", "keywords", "references"].includes(activeSection) && (
+              <Button variant="ghost" size="sm" className="gap-2 text-blue-500" onClick={handleGenerateDiagram} disabled={isBusy || !currentSection?.content?.trim()}>
                 {isGeneratingDiagram ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
                 {isGeneratingDiagram ? "Generating..." : "Generate Diagram"}
               </Button>
@@ -2295,6 +2331,16 @@ export default function PaperEditor() {
                           <ImageIcon className="h-4 w-4 text-accent" /> Section Diagrams ({sectionDiagrams[activeSection]?.length || 0})
                         </h3>
                         <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-xs h-7 gap-1 border-accent/40 text-accent hover:bg-accent/10" 
+                            onClick={handleGenerateDiagram} 
+                            disabled={isBusy || !currentSection?.content?.trim()}
+                          >
+                            {isGeneratingDiagram ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-accent" />}
+                            Generate AI Diagram
+                          </Button>
                           <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => fileUploadRef.current?.click()}>
                             + Upload Image
                           </Button>
@@ -2334,6 +2380,18 @@ export default function PaperEditor() {
                                       ))}
                                     </div>
                                     
+                                    {/* Download PNG image button */}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 text-xs px-2 gap-1 hover:bg-accent/10 hover:text-accent hover:border-accent/30"
+                                      onClick={() => handleDownloadDiagramPng(diag)}
+                                      title="Download generated diagram as PNG image"
+                                    >
+                                      <Download className="h-3 w-3" />
+                                      <span className="hidden sm:inline">Download PNG</span>
+                                    </Button>
+
                                     {/* Optimize button for manual compression */}
                                     {!isMermaid && diag.imageData && (
                                       <Button 
@@ -2396,14 +2454,23 @@ export default function PaperEditor() {
                           })}
                         </div>
                       ) : currentSection?.content.trim() ? (
-                        <div className="flex gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <button
+                            onClick={handleGenerateDiagram}
+                            disabled={isBusy}
+                            className="rounded-xl border-2 border-dashed border-accent/40 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/60 transition-colors group cursor-pointer disabled:opacity-50"
+                          >
+                            <Sparkles className="h-6 w-6 text-accent group-hover:scale-110 transition-transform mx-auto mb-2" />
+                            <p className="text-sm font-medium text-foreground">Generate AI Diagram (Mermaid)</p>
+                            <p className="text-xs text-muted-foreground mt-1">Create Flowcharts, Architecture & Schematics</p>
+                          </button>
                           <button
                             onClick={() => fileUploadRef.current?.click()}
-                            className="flex-1 rounded-xl border-2 border-dashed border-accent/30 bg-accent/5 p-6 text-center hover:bg-accent/10 hover:border-accent/50 transition-colors group"
+                            className="rounded-xl border-2 border-dashed border-border/60 bg-muted/20 p-6 text-center hover:bg-muted/40 hover:border-border transition-colors group cursor-pointer"
                           >
-                            <Upload className="h-6 w-6 text-accent/60 group-hover:text-accent mx-auto mb-2" />
-                            <p className="text-sm font-medium text-foreground">Upload File(s)</p>
-                            <p className="text-xs text-muted-foreground mt-1">Supports images or data files (multiple allowed)</p>
+                            <Upload className="h-6 w-6 text-muted-foreground group-hover:text-foreground mx-auto mb-2" />
+                            <p className="text-sm font-medium text-foreground">Upload Image(s)</p>
+                            <p className="text-xs text-muted-foreground mt-1">PNG, JPG, or SVG image files</p>
                           </button>
                         </div>
                       ) : null}

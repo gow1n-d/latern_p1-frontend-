@@ -319,10 +319,15 @@ function svgToPng(svgString: string): Promise<string> {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
+        // shortcut: parse viewBox first to maintain true aspect ratio of Mermaid diagrams
+        const viewBoxMatch = cleanSvg.match(/viewBox=["']\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*["']/i);
         const widthMatch = cleanSvg.match(/width=["'](\d+(?:\.\d+)?)px["']/i) || cleanSvg.match(/width=["'](\d+(?:\.\d+)?)["']/i);
         const heightMatch = cleanSvg.match(/height=["'](\d+(?:\.\d+)?)px["']/i) || cleanSvg.match(/height=["'](\d+(?:\.\d+)?)["']/i);
-        const w = Math.min(widthMatch ? parseFloat(widthMatch[1]) : 600, 800);
-        const h = Math.min(heightMatch ? parseFloat(heightMatch[1]) : 400, 600);
+        
+        const rawW = widthMatch ? parseFloat(widthMatch[1]) : (viewBoxMatch ? parseFloat(viewBoxMatch[3]) : 800);
+        const rawH = heightMatch ? parseFloat(heightMatch[1]) : (viewBoxMatch ? parseFloat(viewBoxMatch[4]) : 500);
+        const w = Math.max(300, Math.min(rawW || 800, 1600));
+        const h = Math.max(200, Math.min(rawH || 500, 1200));
         
         canvas.width = w;
         canvas.height = h;
@@ -331,7 +336,7 @@ function svgToPng(svgString: string): Promise<string> {
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const pngData = canvas.toDataURL("image/png", 0.92);
+          const pngData = canvas.toDataURL("image/png", 0.95);
           URL.revokeObjectURL(url);
           resolve(pngData);
         } else {

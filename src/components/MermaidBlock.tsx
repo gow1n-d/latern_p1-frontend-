@@ -15,20 +15,30 @@ export default function MermaidBlock({ code }: { code: string }) {
     const renderDiagram = async () => {
       try {
         setError(false);
-        // Sanitize common AI mistakes
-        let cleanCode = code.trim();
+        // Sanitize common AI mistakes and markdown fences
+        let cleanCode = code.replace(/```mermaid/gi, "").replace(/```/g, "").trim();
         if (cleanCode.toLowerCase().startsWith("mermaid")) {
           cleanCode = cleanCode.substring(7).trim();
         }
         
-        const { svg } = await mermaid.render(id.current, cleanCode);
+        let renderedSvg = "";
+        try {
+          const { svg } = await mermaid.render(id.current, cleanCode);
+          renderedSvg = svg;
+        } catch (firstErr) {
+          // shortcut: fallback retry with simpler flowchart TD if custom directive failed
+          const retryId = `${id.current}-fallback`;
+          const fallbackCode = cleanCode.replace(/^[a-zA-Z0-9_-]+\s+[a-zA-Z0-9_-]+/i, "flowchart TD");
+          const { svg } = await mermaid.render(retryId, fallbackCode);
+          renderedSvg = svg;
+        }
         
         // Mermaid sometimes still returns an error SVG instead of throwing
-        if (svg.includes("Syntax error") || svg.includes("mermaid-error")) {
+        if (renderedSvg.includes("Syntax error") || renderedSvg.includes("mermaid-error")) {
           throw new Error("Mermaid returned an error SVG");
         }
         
-        if (mounted) setSvg(svg);
+        if (mounted) setSvg(renderedSvg);
       } catch (err) {
         console.error("Mermaid render error:", err);
         if (mounted) setError(true);
