@@ -608,16 +608,28 @@ export default function PaperEditor() {
   const handleGenerateDiagram = useCallback(async () => {
     const titleContent = sections.find((s) => s.id === "title")?.content?.trim() || "Academic Research Study";
     
+    // Auto-select a body section if currently on title, keywords, or references
+    let targetSectionId = activeSection;
+    if (["title", "keywords", "references"].includes(targetSectionId)) {
+      const preferred = sections.find(s => ["methodology", "system-architecture", "architecture", "results", "discussion"].includes(s.id)) ||
+        sections.find(s => !["title", "keywords", "references"].includes(s.id));
+      if (preferred) {
+        targetSectionId = preferred.id;
+        setActiveSection(preferred.id);
+      }
+    }
+    const targetSec = sections.find(s => s.id === targetSectionId) || currentSection;
+
     setIsGeneratingDiagram(true);
-    toast.info("Generating diagram...");
+    toast.info(`Generating diagram for ${targetSec?.label || "Methodology"}...`);
     try {
       const result = await generateDiagram({
         title: titleContent,
         domain: paperMeta.domain,
-        section: currentSection?.label || activeSection,
+        section: targetSec?.label || targetSectionId,
         methodology: paperMeta.methodology,
         results_summary: paperMeta.results_summary,
-        description: currentSection?.content || ""
+        description: targetSec?.content || ""
       });
       if (result.success && (result.code || result.imageData)) {
         let diagId = Math.random().toString(36).substring(2, 9);
@@ -626,7 +638,7 @@ export default function PaperEditor() {
           type: result.type,
           code: result.code,
           imageData: result.imageData,
-          caption: result.caption || "Generated Diagram",
+          caption: result.caption || `${targetSec?.label || "System"} Diagram`,
           width: "100%"
         };
 
@@ -640,10 +652,10 @@ export default function PaperEditor() {
           ensurePng(newDiag).then((png) => {
             if (png) {
               setSectionDiagrams(prev => {
-                const list = prev[activeSection] || [];
+                const list = prev[targetSectionId] || [];
                 return {
                   ...prev,
-                  [activeSection]: list.map(d => d.id === diagId ? { ...d, imageData: png } : d)
+                  [targetSectionId]: list.map(d => d.id === diagId ? { ...d, imageData: png } : d)
                 };
               });
             }
@@ -651,13 +663,13 @@ export default function PaperEditor() {
         }
         
         setSectionDiagrams(prev => {
-          const currentList = prev[activeSection] || [];
-          return { ...prev, [activeSection]: [...currentList, newDiag] };
+          const currentList = prev[targetSectionId] || [];
+          return { ...prev, [targetSectionId]: [...currentList, newDiag] };
         });
 
         setSections(prevSecs => {
           const updatedSecs = prevSecs.map(s => {
-            if (s.id === activeSection) {
+            if (s.id === targetSectionId) {
               const currentList = s.diagrams || [];
               const updatedList = [...currentList, newDiag];
               const textarea = textareaRef.current;
@@ -1428,12 +1440,10 @@ export default function PaperEditor() {
   const openScholarModal = (initialQuery?: string) => {
     setShowScholar(true);
     const paperTitle = sections.find(s => s.id === "title")?.content?.trim();
-    const q = initialQuery || scholarQuery || paperTitle || paperMeta.domain || "";
-    if (q) {
-      setScholarQuery(q);
-      if (scholarResults.length === 0) {
-        handleScholarSearch(q);
-      }
+    const q = initialQuery || scholarQuery || paperTitle || paperMeta.domain || "academic research state of the art survey";
+    setScholarQuery(q);
+    if (scholarResults.length === 0 || initialQuery) {
+      handleScholarSearch(q);
     }
   };
 
@@ -1548,112 +1558,101 @@ export default function PaperEditor() {
   const handleAiFixValidation = useCallback(async () => {
     if (!validationResult || validationResult.issues.length === 0) return;
     setIsFixingValidation(true);
+    toast.info("AI is resolving formatting issues across your paper...");
 
-    // Group issues by type for targeted fixing
+    const updatedSections = [...sections];
     const errorIssues = validationResult.issues.filter(i => i.type === "error");
     const warningIssues = validationResult.issues.filter(i => i.type === "warning");
-    const allIssues = [...errorIssues, ...warningIssues];
-    const issueDescriptions = allIssues.map(i => i.message).join("; ");
 
-    // Handle missing section errors by generating content for empty required sections
-    const missingSections = errorIssues
-      .filter(i => i.message.toLowerCase().includes("missing"))
-      .map(i => {
-        const match = i.message.match(/missing (?:required|essential) section:\s*(.+)/i);
-        return match ? match[1].trim().toLowerCase().replace(/\s+/g, "-") : null;
-      })
-      .filter(Boolean);
+    const titleContent = updatedSections.find(s => s.id === "title")?.content || "";
+    const journalName = journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE";
 
-    const titleContent = sections.find(s => s.id === "title")?.content || "";
-
-    // Generate missing sections first
-    for (const missingId of missingSections) {
-      const sec = sections.find(s => s.id === missingId || s.id.includes(missingId as string));
-      if (sec && !sec.content.trim()) {
-        let accumulated = "";
-        await generateSection(
-          {
-            section: sec.label,
-            title: titleContent,
-            domain: paperMeta.domain,
-            methodology: paperMeta.methodology,
-            results_summary: paperMeta.results_summary,
-            journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
-            existing_content: sections.filter(s => s.content.trim() && s.id !== sec.id).map(s => `${s.label}: ${s.content.slice(0, 500)}`).join("\n"),
-          },
-          {
-            onDelta: (text) => {
-              accumulated += text;
-              const current = stripMarkdown(accumulated);
-              setSections((prev) => prev.map((s) => s.id === sec.id ? { ...s, content: current } : s));
-            },
-            onDone: () => {},
-            onError: (err) => toast.error(err),
-          }
-        );
-      }
-    }
-
-    // Fix existing sections with content issues (length, structure warnings)
-    if (warningIssues.length > 0) {
-      for (const sec of sections.filter(s => s.content.trim() && !NON_GENERATABLE.includes(s.id))) {
-        // Check if this section is relevant to any warning
-        const relevantWarnings = warningIssues.filter(w =>
-          w.message.toLowerCase().includes(sec.label.toLowerCase()) ||
-          w.message.toLowerCase().includes(sec.id.toLowerCase()) ||
-          w.message.toLowerCase().includes("abstract") && sec.id === "abstract" ||
-          w.message.toLowerCase().includes("keyword") && sec.id === "keywords" ||
-          w.message.toLowerCase().includes("title") && sec.id === "title" ||
-          w.message.toLowerCase().includes("reference") && sec.id === "references" ||
-          w.message.toLowerCase().includes("short") && sec.id !== "title"
-        );
-        if (relevantWarnings.length === 0) continue;
-
-        setActiveSection(sec.id);
-        let accumulated = "";
-        const specificIssues = relevantWarnings.map(w => w.message).join("; ");
-        await aiAssist(
-          {
-            instruction: `Fix ONLY these specific issues in this section: ${specificIssues}. Do NOT change content that doesn't relate to these issues. Preserve all facts and data exactly.`,
-            content: sec.content,
-            journal: journalOptions.find((j) => j.id === selectedJournal)?.name || "IEEE",
-          },
-          {
-            onDelta: (text) => {
-              accumulated += text;
-              const current = stripMarkdown(accumulated);
-              setSections((prev) => prev.map((s) => (s.id === sec.id ? { ...s, content: current } : s)));
-            },
-            onDone: () => {},
-            onError: (err) => toast.error(err),
-          }
-        );
-      }
-    }
-
-    // Auto-rescan after fixing
-    toast.info("Re-validating format...");
     try {
-      const latestSections = sections.map(s => {
-        const el = document.querySelector(`[data-section-id="${s.id}"]`);
-        return el ? s : s;
-      });
-      setSections(prev => {
-        const result = validateFormat({ sections: prev, journal: selectedJournal });
-        result.then(res => {
-          setValidationResult(res);
-          if (res.issues.filter(i => i.type === "error" || i.type === "warning").length === 0) {
-            toast.success("All format issues resolved! ✅");
-          } else {
-            toast.success("Format improved! Some minor issues remain.");
-          }
-        }).catch(() => {});
-        return prev;
-      });
-    } catch {}
+      // 1. Generate content for missing/empty required sections
+      for (const err of errorIssues) {
+        const missingMatch = err.message.match(/missing (?:required|essential) section:\s*(.+)/i) ||
+                             err.message.match(/(?:section|require)\s+([a-zA-Z0-9_\s-]+)\s+is empty/i);
+        const nameKey = missingMatch ? missingMatch[1].trim().toLowerCase() : "";
+        const targetSec = updatedSections.find(s => !s.content.trim() && (
+          (nameKey && (s.label.toLowerCase().includes(nameKey) || s.id.toLowerCase().includes(nameKey))) ||
+          err.message.toLowerCase().includes(s.label.toLowerCase()) ||
+          err.message.toLowerCase().includes(s.id.toLowerCase())
+        ));
 
-    setIsFixingValidation(false);
-    setSections((prev) => { autoSave(prev); return prev; });
+        if (targetSec && !targetSec.content.trim()) {
+          let accumulated = "";
+          await generateSection(
+            {
+              section: targetSec.label,
+              title: titleContent || "Research Study",
+              domain: paperMeta.domain,
+              methodology: paperMeta.methodology,
+              results_summary: paperMeta.results_summary,
+              journal: journalName,
+              existing_content: updatedSections.filter(s => s.content.trim() && s.id !== targetSec.id).map(s => `${s.label}: ${s.content.slice(0, 400)}`).join("\n"),
+            },
+            {
+              onDelta: (text) => {
+                accumulated += text;
+                const current = stripMarkdown(accumulated);
+                const idx = updatedSections.findIndex(s => s.id === targetSec.id);
+                if (idx !== -1) updatedSections[idx] = { ...updatedSections[idx], content: current };
+                setSections([...updatedSections]);
+              },
+              onDone: () => {},
+              onError: (err) => console.error("Section gen error:", err),
+            }
+          );
+        }
+      }
+
+      // 2. Fix sections with warnings (length, citations, formatting)
+      for (const warn of warningIssues) {
+        const sec = updatedSections.find(s => s.content.trim() && !NON_GENERATABLE.includes(s.id) && (
+          warn.message.toLowerCase().includes(s.label.toLowerCase()) ||
+          warn.message.toLowerCase().includes(s.id.toLowerCase())
+        ));
+
+        if (sec && sec.content.trim().length > 30) {
+          let accumulated = "";
+          await aiAssist(
+            {
+              instruction: `Address this format validation warning: "${warn.message}". Improve academic density, structure, and adherence to ${journalName} formatting rules. Preserve all factual data.`,
+              content: sec.content,
+              journal: journalName,
+            },
+            {
+              onDelta: (text) => {
+                accumulated += text;
+                const current = stripMarkdown(accumulated);
+                const idx = updatedSections.findIndex(s => s.id === sec.id);
+                if (idx !== -1) updatedSections[idx] = { ...updatedSections[idx], content: current };
+                setSections([...updatedSections]);
+              },
+              onDone: () => {},
+              onError: (err) => console.error("Ai assist error:", err),
+            }
+          );
+        }
+      }
+
+      // 3. Rescan format with updated content and update validation state
+      setSections([...updatedSections]);
+      autoSave(updatedSections);
+      toast.info("Re-scoring paper format...");
+      const res = await validateFormat({ sections: updatedSections, journal: selectedJournal });
+      setValidationResult(res);
+      toast.success(`Format fixed! Score improved to ${res.score}% 🎉`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Format fix finished, re-scanning...");
+      try {
+        const res = await validateFormat({ sections: updatedSections, journal: selectedJournal });
+        setValidationResult(res);
+      } catch {}
+    } finally {
+      setIsFixingValidation(false);
+    }
   }, [validationResult, sections, selectedJournal, autoSave, paperMeta]);
 
   const handleSmartImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2106,6 +2105,16 @@ export default function PaperEditor() {
           </Button>
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={handleCheckPlagiarism} disabled={isCheckingPlagiarism}>
             {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Check Plagiarism
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full gap-2 justify-start border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/5 hover:bg-blue-500/10 font-medium" 
+            onClick={handleGenerateDiagram}
+            disabled={isBusy}
+          >
+            {isGeneratingDiagram ? <Loader2 className="h-4 w-4 animate-spin text-blue-500" /> : <ImageIcon className="h-4 w-4 text-blue-500" />} 
+            Generate Diagram
           </Button>
           <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => openScholarModal()}>
             <GraduationCap className="h-4 w-4" /> Google Scholar
@@ -2607,6 +2616,9 @@ export default function PaperEditor() {
                 <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); handleCheckPlagiarism(); }} disabled={isCheckingPlagiarism}>
                   {isCheckingPlagiarism ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Check Plagiarism
                 </Button>
+                <Button variant="outline" size="sm" className="w-full gap-2 justify-start border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/5 hover:bg-blue-500/10" onClick={() => { setShowMobileSections(false); handleGenerateDiagram(); }} disabled={isBusy}>
+                  {isGeneratingDiagram ? <Loader2 className="h-4 w-4 animate-spin text-blue-500" /> : <ImageIcon className="h-4 w-4 text-blue-500" />} Generate Diagram
+                </Button>
                 <Button variant="outline" size="sm" className="w-full gap-2 justify-start" onClick={() => { setShowMobileSections(false); openScholarModal(); }}>
                   <GraduationCap className="h-4 w-4" /> Google Scholar
                 </Button>
@@ -2639,7 +2651,19 @@ export default function PaperEditor() {
                 <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5 text-accent" /> Format Validation
                 </h3>
-                <button onClick={() => setShowValidation(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60" 
+                    onClick={handleValidateFormat} 
+                    disabled={isValidating || isFixingValidation}
+                    title="Re-scan and calculate updated format score"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isValidating ? "animate-spin" : ""}`} /> Re-Scan
+                  </Button>
+                  <button onClick={() => setShowValidation(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+                </div>
               </div>
               <div className="p-5">
                 {isValidating ? (
@@ -2933,7 +2957,15 @@ export default function PaperEditor() {
                         );
 
                       return (
-                        <div key={i} className={`rounded-xl border p-4 transition-all ${isAlreadyAdded ? "border-emerald-500/30 bg-emerald-500/5" : "border-border hover:border-border/80 hover:bg-muted/30"}`}>
+                        <div 
+                          key={i} 
+                          onClick={() => { if (!isAlreadyAdded) addReferenceFromScholar(ref); }}
+                          className={`rounded-xl border p-4 transition-all cursor-pointer ${
+                            isAlreadyAdded 
+                              ? "border-emerald-500/40 bg-emerald-500/5 ring-1 ring-emerald-500/20" 
+                              : "border-border hover:border-accent/40 hover:bg-muted/40 shadow-xs"
+                          }`}
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <h4 className="font-semibold text-sm text-foreground leading-snug">{ref.title}</h4>
@@ -2962,6 +2994,7 @@ export default function PaperEditor() {
                                     href={ref.doi.startsWith("http") ? ref.doi : `https://doi.org/${ref.doi.replace(/^doi:\s*/i, "")}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
                                     className="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:underline"
                                   >
                                     <ExternalLink className="h-3 w-3" /> DOI: {ref.doi.slice(0, 20)}...
@@ -2971,6 +3004,7 @@ export default function PaperEditor() {
                                   href={`https://scholar.google.com/scholar?q=${encodeURIComponent(ref.title)}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
                                   className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline ml-auto"
                                 >
                                   <GraduationCap className="h-3.5 w-3.5 text-accent" /> View on Scholar ↗
@@ -2979,19 +3013,36 @@ export default function PaperEditor() {
                             </div>
                             <div className="flex flex-col gap-2 shrink-0">
                               {isAlreadyAdded ? (
-                                <Button variant="outline" size="sm" className="text-xs gap-1.5 border-emerald-500/40 text-emerald-600 bg-emerald-500/10 cursor-default">
-                                  <Check className="h-3.5 w-3.5" /> Added
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="text-xs gap-1.5 border-emerald-500/40 text-emerald-600 bg-emerald-500/10 cursor-default"
+                                  onClick={(e) => { e.stopPropagation(); }}
+                                >
+                                  <Check className="h-3.5 w-3.5" /> Added to Paper
                                 </Button>
                               ) : (
-                                <Button variant="hero" size="sm" className="text-xs gap-1.5" onClick={() => addReferenceFromScholar(ref)}>
-                                  <Plus className="h-3.5 w-3.5" /> Add Ref
+                                <Button 
+                                  variant="hero" 
+                                  size="sm" 
+                                  className="text-xs gap-1.5 shadow-sm" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addReferenceFromScholar(ref);
+                                  }}
+                                  title="Add citation to References section"
+                                >
+                                  <Plus className="h-3.5 w-3.5" /> + Add to Paper
                                 </Button>
                               )}
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="text-xs gap-1 text-muted-foreground hover:text-foreground"
-                                onClick={() => insertCitationInText(ref)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertCitationInText(ref);
+                                }}
                                 title="Insert sequential citation [X] into active section or copy"
                               >
                                 <Quote className="h-3 w-3 text-accent" /> Cite In-Text
