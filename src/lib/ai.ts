@@ -964,84 +964,40 @@ export type DiagramResult = {
 };
 
 export function sanitizeMermaidCode(code: string): string {
-  // 1. Remove markdown fences
+  if (!code) return "flowchart TD\n  A[\"System Start\"] --> B[\"Processing\"] --> C[\"Output\"]";
+
+  // 1. Remove markdown fences & clean emojis that crash Mermaid parser
   let sanitized = code.replace(/```mermaid/gi, "").replace(/```/g, "").trim();
+  sanitized = sanitized.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "");
   
-  // 2. Unescape double quotes
-  sanitized = sanitized.replace(/\\"/g, '"');
+  // 2. Ensure valid diagram directive exists
+  const hasDirective = /^(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|gitGraph|requirementDiagram)\b/im.test(sanitized);
+  if (!hasDirective) {
+    sanitized = "flowchart TD\n" + sanitized;
+  }
 
   // 3. Process line by line
   const lines = sanitized.split("\n");
-  const processedLines = lines.map(line => {
+  const processedLines = lines.map((line, idx) => {
     let l = line.trim();
     if (!l) return l;
 
-    const lower = l.toLowerCase();
-    if (
-      lower.startsWith("graph") ||
-      lower.startsWith("flowchart") ||
-      lower.startsWith("sequencediagram") ||
-      lower.startsWith("classdiagram") ||
-      lower.startsWith("statediagram") ||
-      lower.startsWith("erdiagram") ||
-      lower.startsWith("gantt") ||
-      lower.startsWith("pie") ||
-      lower.startsWith("%%") ||
-      lower.startsWith("subgraph") ||
-      lower === "end" ||
-      lower.startsWith("participant") ||
-      lower.startsWith("activate") ||
-      lower.startsWith("deactivate") ||
-      lower.startsWith("note ") ||
-      lower.startsWith("loop ") ||
-      lower.startsWith("alt ") ||
-      lower.startsWith("else") ||
-      lower.startsWith("opt ") ||
-      lower.startsWith("class ") ||
-      lower.startsWith("direction ")
-    ) {
-      return l;
+    // Subgraph title sanitization: e.g. subgraph Data Prep -> subgraph sub_1 ["Data Prep"]
+    const subMatch = l.match(/^subgraph\s+([^"\[\]]+)$/i);
+    if (subMatch) {
+      const title = subMatch[1].trim();
+      return `subgraph sub_${idx} ["${title.replace(/"/g, "'")}"]`;
     }
 
-    // Sanitize node labels for common shapes
-    const brackets = [
-      { open: "([", close: "])" },
-      { open: "[[", close: "]]" },
-      { open: "[(", close: ")]" },
-      { open: "((", close: "))" },
-      { open: "[", close: "]" },
-      { open: "(", close: ")" },
-      { open: "{", close: "}" },
-      { open: ">", close: "]" },
-    ];
+    // Node label quoting: ID[Label (with parens)] -> ID["Label (with parens)"]
+    l = l.replace(/\b([a-zA-Z0-9_\-]+)\s*\[([^"\]]+)\]/g, (m, id, text) => {
+      const cleanId = id.replace(/[^a-zA-Z0-9_]/g, "_");
+      return `${cleanId}["${text.trim().replace(/"/g, "'")}"]`;
+    });
 
-    for (const b of brackets) {
-      const escape = (str: string) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      const openEsc = escape(b.open);
-      const closeEsc = escape(b.close);
-      
-      const regex = new RegExp(`\\b([a-zA-Z0-9_-]+)\\s*${openEsc}([^\\"${closeEsc}]+)${closeEsc}`, 'g');
-      
-      l = l.replace(regex, (match, id, text) => {
-        const trimmedText = text.trim();
-        const hasSpecialChars = /[\s()\[\]{}":,;.\\\/\-&+#]/.test(trimmedText);
-        if (hasSpecialChars) {
-          const escapedText = trimmedText.replace(/"/g, '\\"');
-          return `${id}${b.open}"${escapedText}"${b.close}`;
-        }
-        return match;
-      });
-    }
-
-    // Sanitize arrow labels: e.g. -->|label (with parens)| -> -->|"label (with parens)"|
-    l = l.replace(/(\|)([^|"]+)(\|)/g, (match, p1, text, p3) => {
-      const trimmedText = text.trim();
-      const hasSpecialChars = /[\s()\[\]{}":,;.\\\/\-&+#]/.test(trimmedText);
-      if (hasSpecialChars) {
-        const escapedText = trimmedText.replace(/"/g, '\\"');
-        return `|"${escapedText}"|`;
-      }
-      return match;
+    // Arrow label quoting: -->|text (parens)| -> -->|"text (parens)"|
+    l = l.replace(/\|([^|"]+)\|/g, (m, txt) => {
+      return `|"${txt.trim().replace(/"/g, "'")}"|`;
     });
 
     return l;
