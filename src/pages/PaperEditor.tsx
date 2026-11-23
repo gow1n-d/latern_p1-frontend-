@@ -1365,8 +1365,9 @@ export default function PaperEditor() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Validation failed");
       setShowValidation(false);
+    } finally {
+      setIsValidating(false);
     }
-    setIsValidating(false);
   };
 
   // Plagiarism check
@@ -1382,8 +1383,9 @@ export default function PaperEditor() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Plagiarism check failed");
       setShowPlagiarism(false);
+    } finally {
+      setIsCheckingPlagiarism(false);
     }
-    setIsCheckingPlagiarism(false);
   };
 
   // Open scholar modal with intelligent pre-fill
@@ -2687,16 +2689,30 @@ export default function PaperEditor() {
                               {sec.matches && sec.matches.length > 0 && (
                                 <div className="mt-2 space-y-1.5">
                                   <div className="text-xs font-semibold text-foreground">Matched sources:</div>
-                                  {sec.matches.map((m, k) => (
+                                  {sec.matches.map((m, k) => {
+                                    /* shortcut: AI can return empty url — new URL("") crashes React and whites out the screen */
+                                    let hostname = "";
+                                    try { hostname = m.url ? new URL(m.url).hostname : ""; } catch { /* invalid url */ }
+                                    return m.url ? (
                                     <a key={k} href={m.url} target="_blank" rel="noopener noreferrer" className="block rounded border border-border bg-muted/30 p-2 hover:bg-muted/60 transition-colors">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="text-xs font-medium text-foreground line-clamp-1">{m.title || m.url}</span>
                                         <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 font-mono">{m.similarity}%</span>
                                       </div>
-                                      <div className="text-[10px] text-muted-foreground mt-0.5">{m.source} • {new URL(m.url).hostname}</div>
-                                      <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">"{m.snippet}"</div>
+                                      {(m.source || hostname) && <div className="text-[10px] text-muted-foreground mt-0.5">{m.source}{hostname ? ` • ${hostname}` : ""}</div>}
+                                      {m.snippet && <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">"{m.snippet}"</div>}
                                     </a>
-                                  ))}
+                                    ) : (
+                                    <div key={k} className="block rounded border border-border bg-muted/30 p-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs font-medium text-foreground line-clamp-1">{m.title || m.source || "Matched pattern"}</span>
+                                        <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 font-mono">{m.similarity}%</span>
+                                      </div>
+                                      {m.source && <div className="text-[10px] text-muted-foreground mt-0.5">{m.source}</div>}
+                                      {m.snippet && <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2 italic">"{m.snippet}"</div>}
+                                    </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
