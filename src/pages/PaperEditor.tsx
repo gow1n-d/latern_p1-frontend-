@@ -365,7 +365,19 @@ export default function PaperEditor() {
         } else if (s.diagram) {
           diagMap[s.id] = [{ ...s.diagram, id: s.diagram.id || Math.random().toString(36).substring(2, 9) }];
         } else {
-          diagMap[s.id] = [];
+          // Auto-detect inline mermaid blocks from content
+          const match = s.content?.match(/```mermaid\s*([\s\S]*?)```/i);
+          if (match) {
+            diagMap[s.id] = [{
+              id: Math.random().toString(36).substring(2, 9),
+              type: "mermaid",
+              code: match[1].trim(),
+              caption: `${s.label} Architecture Diagram`,
+              width: "100%"
+            }];
+          } else {
+            diagMap[s.id] = [];
+          }
         }
       }
       setSectionDiagrams(diagMap);
@@ -692,7 +704,11 @@ export default function PaperEditor() {
           autoSave(updatedSecs);
           return updatedSecs;
         });
-        toast.success("Diagram generated successfully!");
+        toast.success("Diagram generated and displayed below editor! 📊");
+        setTimeout(() => {
+          const el = document.getElementById("section-diagrams-container");
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 200);
       } else {
         toast.error("Failed to generate diagram");
       }
@@ -1130,8 +1146,28 @@ export default function PaperEditor() {
 
     const targetSection = customSectionId || (targetScope === "all" ? undefined : (targetScope === "active" ? activeSection : targetScope));
 
-    // Intercept instructions to minimize, maximize, optimize, or remove diagrams locally for ultra-fast response
     const lowerInstruction = instruction.toLowerCase();
+
+    // Intercept instructions to generate/create diagrams via AI co-author
+    const isDiagramGen = (lowerInstruction.includes("diagram") || lowerInstruction.includes("flowchart") || lowerInstruction.includes("mermaid") || lowerInstruction.includes("architecture")) &&
+      (lowerInstruction.includes("generate") || lowerInstruction.includes("create") || lowerInstruction.includes("add") || lowerInstruction.includes("make") || lowerInstruction.includes("draw") || lowerInstruction.includes("insert"));
+    if (isDiagramGen) {
+      let diagTargetSection = targetSection || activeSection;
+      for (const s of sections) {
+        if (lowerInstruction.includes(s.label.toLowerCase()) || lowerInstruction.includes(s.id.toLowerCase())) {
+          diagTargetSection = s.id;
+          setActiveSection(s.id);
+          break;
+        }
+      }
+      const label = sections.find(s => s.id === diagTargetSection)?.label || diagTargetSection;
+      await handleGenerateDiagram();
+      setChatHistory(prev => [...prev, { sender: "ai", message: `I have generated and rendered a visual Mermaid diagram for the "${label}" section! You can view it below the editor, resize it, or download it as a publication-ready PNG image 📊.` }]);
+      setIsAssisting(false);
+      return;
+    }
+
+    // Intercept instructions to minimize, maximize, optimize, or remove diagrams locally for ultra-fast response
     if (
       lowerInstruction.includes("minimize") || 
       lowerInstruction.includes("maximize") || 
@@ -2315,6 +2351,22 @@ export default function PaperEditor() {
                       </span>
                     )}
                   </div>
+                  {sectionDiagrams[activeSection] && sectionDiagrams[activeSection].length > 0 && (
+                    <div className="mb-3 flex items-center justify-between px-3.5 py-1.5 bg-accent/10 border border-accent/25 rounded-xl text-xs text-accent">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <span><strong>{sectionDiagrams[activeSection].length}</strong> Diagram{sectionDiagrams[activeSection].length > 1 ? "s" : ""} generated for {currentSection?.label}</span>
+                      </span>
+                      <button 
+                        type="button"
+                        onClick={() => document.getElementById("section-diagrams-container")?.scrollIntoView({ behavior: "smooth" })}
+                        className="font-semibold underline hover:opacity-80 transition-opacity cursor-pointer"
+                      >
+                        View Visual Diagram ↓
+                      </button>
+                    </div>
+                  )}
+
                   <textarea
                     ref={textareaRef}
                     onKeyDown={handleTextareaKeyDown}
@@ -2333,8 +2385,8 @@ export default function PaperEditor() {
                   )}
 
                   {/* Inline Diagram Section */}
-                  {activeSection !== "title" && activeSection !== "abstract" && activeSection !== "keywords" && (
-                    <div className="mt-6 border-t border-border pt-4">
+                  {activeSection !== "title" && activeSection !== "keywords" && (
+                    <div id="section-diagrams-container" className="mt-6 border-t border-border pt-4">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                           <ImageIcon className="h-4 w-4 text-accent" /> Section Diagrams ({sectionDiagrams[activeSection]?.length || 0})

@@ -61,6 +61,13 @@ function cleanAndParseJSON(text: string) {
 export function stripMarkdown(text: string): string {
   let s = text;
 
+  // Extract and preserve Mermaid diagrams before stripping
+  const mermaidPlaceholders: string[] = [];
+  s = s.replace(/```mermaid\s*([\s\S]*?)```/gi, (match) => {
+    mermaidPlaceholders.push(match);
+    return `\n\n@@MERMAID_PLACEHOLDER_${mermaidPlaceholders.length - 1}@@\n\n`;
+  });
+
   // Extract and preserve markdown tables before stripping
   const tablePlaceholders: string[] = [];
   s = s.replace(/((?:^[ \t]*\|.+\|[ \t]*$\n?){2,})/gm, (match) => {
@@ -101,6 +108,11 @@ export function stripMarkdown(text: string): string {
     cleanTable = cleanTable.replace(/\*{2}(.+?)\*{2}/g, "$1");
     cleanTable = cleanTable.replace(/\*(.+?)\*/g, "$1");
     s = s.replace(`@@TABLE_PLACEHOLDER_${i}@@`, cleanTable.trim());
+  });
+
+  // Restore preserved Mermaid diagrams
+  mermaidPlaceholders.forEach((diagram, i) => {
+    s = s.replace(`@@MERMAID_PLACEHOLDER_${i}@@`, `\n\n${diagram.trim()}\n\n`);
   });
 
   return s.trim();

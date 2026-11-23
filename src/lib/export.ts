@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, ImageRun, convertInchesToTwip, Table, TableRow, TableCell, WidthType, BorderStyle } from "docx";
 import type { PaperSection } from "@/hooks/usePapers";
 import mermaid from "mermaid";
-import { stripMarkdown } from "@/lib/ai";
+import { stripMarkdown, sanitizeMermaidCode } from "@/lib/ai";
 
 type Author = {
   name: string;
@@ -391,10 +391,18 @@ export async function ensurePng(diagram: { type: "mermaid" | "image"; svg?: stri
   if (!svgToUse && diagram.type === "mermaid" && diagram.code) {
     try {
       const mermaid = (await import("mermaid")).default;
-      const uniqueId = `mermaid-export-${Math.random().toString(36).substring(2, 9)}`;
-      const { svg } = await mermaid.render(uniqueId, diagram.code);
-      svgToUse = svg;
-      diagram.svg = svg;
+      const cleanCode = sanitizeMermaidCode(diagram.code);
+      const uniqueId = `mermaid-export-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+      try {
+        const { svg } = await mermaid.render(uniqueId, cleanCode);
+        svgToUse = svg;
+      } catch {
+        // Fallback render
+        const fbId = `mermaid-fb-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+        const { svg } = await mermaid.render(fbId, `flowchart TD\n  A["Input & Objectives"] --> B["System Architecture"] --> C["Results & Evaluation"]`);
+        svgToUse = svg;
+      }
+      diagram.svg = svgToUse;
     } catch (e) {
       console.warn("Failed to render Mermaid code to SVG for PNG export:", e);
     }

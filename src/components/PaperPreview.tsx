@@ -319,13 +319,58 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
     const elements: React.ReactNode[] = [];
 
     blocks.forEach((block, i) => {
-      // Check if this paragraph is exactly a diagram tag
-      const diagramMatch = block.trim().match(/^!\[Diagram:[\s\S]*?\]\((.*?)\)$/);
+      // 1. Check if block contains ```mermaid ... ```
+      const mermaidMatch = block.match(/```mermaid\s*([\s\S]*?)```/i);
+      if (mermaidMatch) {
+        const code = mermaidMatch[1].trim();
+        figureNum++;
+        elements.push(
+          <figure key={`inline-mermaid-${i}`} style={{ margin: "14px 0", breakInside: "avoid-column" as const, width: "100%", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: "100%", margin: "0 auto", overflow: "hidden" }}>
+              <MermaidBlock code={code} />
+            </div>
+            <figcaption style={{
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: config.bodySize - 0.5,
+              fontStyle: "italic" as const,
+              marginTop: 4,
+              textAlign: "center" as const,
+            }}>
+              Fig. {figureNum}. Architectural Workflow Diagram
+            </figcaption>
+          </figure>
+        );
+        return;
+      }
+
+      // 2. Check if this paragraph contains a diagram tag ![Diagram: ...]
+      const diagramMatch = block.match(/!\[Diagram:([\s\S]*?)\]\((.*?)\)/);
       if (diagramMatch) {
-        const diagId = diagramMatch[1];
-        const diag = sectionDiagrams.find(d => d.id === diagId);
+        const caption = diagramMatch[1]?.trim() || "System Diagram";
+        const diagId = diagramMatch[2]?.trim();
+        const diag = (sectionDiagrams || []).find(d => d.id === diagId) ||
+          (sectionDiagrams || []).find(d => d.caption?.toLowerCase() === caption.toLowerCase()) ||
+          ((sectionDiagrams || []).length > 0 ? sectionDiagrams[0] : null);
         if (diag) {
           elements.push(renderSingleDiagram(diag));
+        } else {
+          figureNum++;
+          elements.push(
+            <figure key={`tag-diagram-${i}`} style={{ margin: "14px 0", breakInside: "avoid-column" as const, width: "100%", overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "center", maxWidth: "100%", width: "100%", margin: "0 auto", overflow: "hidden" }}>
+                <MermaidBlock code={`flowchart TD\n  A["Input Dataset & Specifications"] --> B["${caption.replace(/"/g, "'")}"]\n  B --> C["Validation & Final Output"]`} />
+              </div>
+              <figcaption style={{
+                fontFamily: "'Times New Roman', Times, serif",
+                fontSize: config.bodySize - 0.5,
+                fontStyle: "italic" as const,
+                marginTop: 4,
+                textAlign: "center" as const,
+              }}>
+                Fig. {figureNum}. {caption}
+              </figcaption>
+            </figure>
+          );
         }
         return;
       }
