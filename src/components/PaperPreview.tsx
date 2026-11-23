@@ -343,8 +343,8 @@ export default function PaperPreview({ sections, journal, authorDetails }: Props
         return;
       }
 
-      // 2. Check if this paragraph contains a diagram tag ![Diagram: ...]
-      const diagramMatch = block.match(/!\[Diagram:([\s\S]*?)\]\((.*?)\)/);
+      // 2. Check if this paragraph contains a diagram or image tag ![Diagram: ...] or ![Caption](...)
+      const diagramMatch = block.match(/!\[(?:Diagram:\s*)?([\s\S]*?)\]\((.*?)\)/);
       if (diagramMatch) {
         const caption = diagramMatch[1]?.trim() || "System Diagram";
         const diagId = diagramMatch[2]?.trim();
